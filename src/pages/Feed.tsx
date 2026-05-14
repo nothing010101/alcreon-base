@@ -408,11 +408,12 @@ export default function Feed() {
       const addresses = list.map(t => t.contract_address).join(',')
       const res = await fetch(`/api/dexscreener/tokens/v1/base/${addresses}`)
       if (!res.ok) return map
-      const json = (await res.json()) as DexScreenerResponse
-      const pairs = json.pairs ?? []
+      const rawPairs = (await res.json()) as DexScreenerPair[]
+      const pairs = Array.isArray(rawPairs) ? rawPairs : []
       // Group by base token address, take most liquid pair
       const grouped = new Map<string, DexScreenerPair>()
       for (const pair of pairs) {
+        if (!pair?.baseToken?.address) continue
         const addr = pair.baseToken.address.toLowerCase()
         const existing = grouped.get(addr)
         if (!existing || (pair.liquidity?.usd ?? 0) > (existing.liquidity?.usd ?? 0)) {
@@ -485,10 +486,12 @@ export default function Feed() {
     }
   }, [fetchTokens])
 
-  // ── Volume filter ───────────────────────────────────────────────────────────
+  // ── Volume filter — only apply if DexScreener data exists ─────────────────
   const visibleTokens = tokens.filter(t => {
-    const age = ageMinutes(t.created_at)
-    if (age <= 15 && (t.dex?.volH1 ?? 0) < 100) return false
+    if (t.dex !== undefined) {
+      const age = ageMinutes(t.created_at)
+      if (age <= 15 && t.dex.volH1 < 100) return false
+    }
     if (hideUnverified && !isTrusted(t)) return false
     return true
   })
@@ -500,16 +503,14 @@ export default function Feed() {
 
   const displayedTokens = activeTab === 'Trending' ? trendingTokens : visibleTokens
 
-  // ── Sidebar: top 5 by DexScreener vol h1 ───────────────────────────────────
+  // ── Sidebar: top 5 by DexScreener vol h1 (skip tokens with no dex data) ───
   const sidebarTop5 = [...tokens]
-    .filter(t => (t.dex?.volH1 ?? 0) > 0)
+    .filter(t => t.dex !== undefined && t.dex.volH1 > 0)
     .sort((a, b) => (b.dex?.volH1 ?? 0) - (a.dex?.volH1 ?? 0))
     .slice(0, 5)
 
   const useDexSidebar = sidebarTop5.length > 0
-  const sidebarFallback = [...tokens]
-    .sort((a, b) => (b.related?.market?.marketCap ?? 0) - (a.related?.market?.marketCap ?? 0))
-    .slice(0, 5)
+  const sidebarFallback: EnrichedToken[] = []
 
   return (
     <div className="flex min-h-screen flex-col bg-[#060a10]">
@@ -675,29 +676,21 @@ export default function Feed() {
                       <div className="flex-1 min-w-0">
                         <div className="text-white/80 text-xs font-semibold truncate">${t.symbol}</div>
                         <div className="text-white/25 text-[10px] font-mono">
-                          {useDexSidebar && t.dex
-                            ? `Vol 1h: ${fmtVol(t.dex.volH1)}`
-                            : fmtMc(t.related?.market?.marketCap ?? 0)}
+                          {t.dex ? `Vol 1h: ${fmtVol(t.dex.volH1)}` : ''}
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0">
-                        {useDexSidebar && t.dex ? (
+                        {t.dex && (
                           <div className={`text-xs font-mono ${t.dex.changeH1 >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                             {t.dex.changeH1 >= 0 ? '+' : ''}{t.dex.changeH1.toFixed(1)}%
                           </div>
-                        ) : (
-                          <div className="text-xs font-mono text-[#7ba5ff]">
-                            {fmtMc(t.related?.market?.marketCap ?? 0)}
-                          </div>
                         )}
-                        <div className="text-white/25 text-[10px] font-mono">{timeAgo(t.created_at)}</div>
+                        <div className="text-white/25 text-[10px] font-mono">{t.dex ? fmtPrice(t.dex.priceUsd) : timeAgo(t.created_at)}</div>
                       </div>
                     </a>
                   ))}
                 </div>
-                <p className="mt-4 text-[10px] text-white/20 font-mono">
-                  {useDexSidebar ? 'via DexScreener' : 'via Clanker API'}
-                </p>
+                <p className="mt-4 text-[10px] text-white/20 font-mono">via DexScreener</p>
               </div>
 
               {/* Launch CTA */}
