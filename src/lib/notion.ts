@@ -75,17 +75,13 @@ export async function fetchBriefings(): Promise<Editorial[]> {
 
 export function formatDateUTC(iso: string): string {
   if (!iso) return ''
-  return (
-    new Date(iso)
-      .toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-        timeZone: 'UTC',
-      })
-      .replace(',', '') + ' UTC'
-  )
+  const d = new Date(iso)
+  const month = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })
+  const day = d.getUTCDate()
+  const year = d.getUTCFullYear()
+  let hours = d.getUTCHours()
+  const minutes = d.getUTCMinutes().toString().padStart(2, '0')
+  const ampm = hours >= 12 ? 'PM' : 'AM'
+  hours = hours % 12 || 12
+  return `${month} ${day} ${year} · ${hours}:${minutes} ${ampm} UTC`
 }
