@@ -134,7 +134,7 @@ function TokenCard({ token }: { token: ClankerToken }) {
   return (
     <div className="mb-3 break-inside-avoid">
       <a
-        href={`https://www.clanker.world/token/${token.contract_address}`}
+        href={`https://www.clanker.world/clanker/${token.contract_address}`}
         target="_blank"
         rel="noopener noreferrer"
         className="block rounded-2xl border border-white/[0.07] bg-white/[0.02] hover:border-white/[0.12] hover:bg-white/[0.03] transition-all p-4 cursor-pointer"
@@ -432,7 +432,7 @@ export default function Feed() {
                     return (
                       <a
                         key={t.id}
-                        href={`https://www.clanker.world/token/${t.contract_address}`}
+                        href={`https://www.clanker.world/clanker/${t.contract_address}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-3 hover:opacity-80 transition-opacity"
