@@ -1,24 +1,18 @@
-import Nav from './components/Nav'
-import Hero from './components/Hero'
-import SignalStrip from './components/SignalStrip'
-import Launches from './components/Launches'
-import Intelligence from './components/Intelligence'
-import LaunchCTA from './components/LaunchCTA'
-import Footer from './components/Footer'
+import { Routes, Route } from 'react-router-dom'
+import Home from './pages/Home'
+import Feed from './pages/Feed'
+import Editorials from './pages/Editorials'
+import SignIn from './pages/SignIn'
+import SignUp from './pages/SignUp'
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-[#060a10]">
-      <a href="#main-content" className="skip-link">Skip to main content</a>
-      <Nav />
-      <main id="main-content">
-        <Hero />
-        <SignalStrip />
-        <Launches />
-        <Intelligence />
-        <LaunchCTA />
-      </main>
-      <Footer />
-    </div>
+    <Routes>
+      <Route path="/" element={<Home />} />
+      <Route path="/feed" element={<Feed />} />
+      <Route path="/editorials" element={<Editorials />} />
+      <Route path="/sign-in" element={<SignIn />} />
+      <Route path="/sign-up" element={<SignUp />} />
+    </Routes>
   )
 }
