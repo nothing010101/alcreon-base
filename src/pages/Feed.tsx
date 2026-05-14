@@ -56,9 +56,6 @@ interface DexScreenerPair {
   priceChange: { h1: number }
 }
 
-interface DexScreenerResponse {
-  pairs: DexScreenerPair[] | null
-}
 
 interface DexData {
   priceUsd: string
