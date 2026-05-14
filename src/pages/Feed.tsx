@@ -519,12 +519,9 @@ export default function Feed() {
     }
   }, [fetchTokens])
 
-  // ── Volume filter — only apply if DexScreener data exists ─────────────────
+  // ── Volume filter — only hide brand-new tokens with zero trading activity ───
   const visibleTokens = tokens.filter(t => {
-    if (t.dex !== undefined) {
-      const age = ageMinutes(t.created_at)
-      if (age <= 15 && t.dex.volH1 < 100) return false
-    }
+    if (t.dex !== undefined && t.dex.volH1 === 0 && ageMinutes(t.created_at) < 3) return false
     if (hideUnverified && !isTrusted(t)) return false
     return true
   })
