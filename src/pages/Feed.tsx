@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import Nav from '../components/Nav'
+import { fetchBriefings, formatDateUTC, type Editorial } from '../lib/notion'
 import Footer from '../components/Footer'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -365,24 +366,46 @@ function TokenCard({ token }: { token: EnrichedToken }) {
   )
 }
 
-// ─── Briefing placeholder ─────────────────────────────────────────────────────
+// ─── Briefing section ────────────────────────────────────────────────────────
 
-function BriefingPlaceholder() {
-  const items = [
-    { tag: 'Daily Briefing', title: 'Base Briefing — May 14', body: 'Top clanker launches, holder stats, and market signals from the last 24 hours. Updated every morning.' },
-    { tag: 'Signal', title: 'Holder retention at all-time high', body: '30-day retention on Base tokens: 61%. Six months ago this was 19%. Something has changed.' },
-    { tag: 'Weekly Wrap', title: 'Weekly wrap — May 13', body: 'The editorial on fee architecture hit 47K reads. $CLANK: 12K holders, $0 marketing. Full breakdown Monday.' },
-  ]
+function BriefingSkeletonCard() {
+  return (
+    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5 animate-pulse">
+      <div className="h-2.5 w-20 rounded bg-white/[0.06] mb-3" />
+      <div className="h-4 w-3/4 rounded bg-white/[0.06] mb-2" />
+      <div className="space-y-1.5">
+        <div className="h-3 w-full rounded bg-white/[0.04]" />
+        <div className="h-3 w-4/5 rounded bg-white/[0.04]" />
+      </div>
+    </div>
+  )
+}
+
+function BriefingList({ items, loading }: { items: Editorial[]; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <BriefingSkeletonCard />
+        <BriefingSkeletonCard />
+        <BriefingSkeletonCard />
+      </div>
+    )
+  }
+  if (items.length === 0) {
+    return <p className="text-center text-white/20 text-xs font-mono pt-4">No briefings yet.</p>
+  }
   return (
     <div className="space-y-3">
-      {items.map((item, i) => (
-        <div key={i} className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
+      {items.map(item => (
+        <div key={item.id} className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
           <span className="text-[9px] font-mono uppercase tracking-widest text-white/30">{item.tag}</span>
           <h3 className="text-white font-semibold text-sm mt-1 mb-1.5">{item.title}</h3>
-          <p className="text-white/45 text-xs leading-relaxed">{item.body}</p>
+          <p className="text-white/45 text-xs leading-relaxed">{item.excerpt}</p>
+          {item.publishAt && (
+            <p className="text-white/20 text-[10px] font-mono mt-2">{formatDateUTC(item.publishAt)}</p>
+          )}
         </div>
       ))}
-      <p className="text-center text-white/20 text-xs font-mono pt-2">Editorial briefings coming soon</p>
     </div>
   )
 }
@@ -398,6 +421,9 @@ export default function Feed() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<string>('')
   const [hideUnverified, setHideUnverified] = useState(false)
+  const [briefings, setBriefings] = useState<Editorial[]>([])
+  const [briefingsLoading, setBriefingsLoading] = useState(false)
+  const briefingsFetchedRef = useRef(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // ── DexScreener batch fetch ─────────────────────────────────────────────────
@@ -476,6 +502,16 @@ export default function Feed() {
       setLoadingMore(false)
     }
   }, [fetchDex])
+
+  // Fetch briefings when Briefing tab is opened
+  useEffect(() => {
+    if (activeTab !== 'Briefing' || briefingsFetchedRef.current) return
+    briefingsFetchedRef.current = true
+    setBriefingsLoading(true)
+    fetchBriefings()
+      .then(setBriefings)
+      .finally(() => setBriefingsLoading(false))
+  }, [activeTab])
 
   // Initial load + 30s polling
   useEffect(() => {
@@ -594,7 +630,7 @@ export default function Feed() {
               )}
 
               <div className="columns-1 gap-3">
-                {activeTab === 'Briefing' && <BriefingPlaceholder />}
+                {activeTab === 'Briefing' && <BriefingList items={briefings} loading={briefingsLoading} />}
 
                 {activeTab !== 'Briefing' && (
                   <>
