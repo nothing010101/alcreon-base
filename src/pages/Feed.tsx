@@ -256,7 +256,7 @@ export default function Feed() {
       })
       if (append && currentCursor) params.set('cursor', currentCursor)
 
-      const res = await fetch(`https://www.clanker.world/api/tokens?${params.toString()}`)
+      const res = await fetch(`/api/clanker/tokens?${params.toString()}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
       const json = (await res.json()) as ClankerApiResponse
