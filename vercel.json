@@ -5,6 +5,18 @@
       "destination": "https://www.clanker.world/api/:path*"
     },
     {
+      "source": "/api/dexscreener/:path*",
+      "destination": "https://api.dexscreener.com/:path*"
+    },
+    {
+      "source": "/api/basescan/:path*",
+      "destination": "https://api.basescan.org/:path*"
+    },
+    {
+      "source": "/api/notion/:path*",
+      "destination": "https://api.notion.com/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
