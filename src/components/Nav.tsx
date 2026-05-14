@@ -22,8 +22,8 @@ const SOCIAL_LINKS = [
   },
 ]
 
-const ALCREON_CA = '0x0000000000000000000'
-const BUY_HREF = 'https://clanker.world'
+const ALCREON_CA = '0x2C59576A7a3C9045317C2fF0Ca4Ef7C4C8e2bb07'
+const BUY_HREF = 'https://clanker.world/clanker/0x2C59576A7a3C9045317C2fF0Ca4Ef7C4C8e2bb07'
 
 function BuyButton() {
   return (
