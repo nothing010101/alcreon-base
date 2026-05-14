@@ -7,12 +7,13 @@ import { streamPosts, briefingPosts, launchPosts, type FeedPost } from '../data/
 const TABS = ['Stream', 'Briefing', 'Launches'] as const
 type Tab = typeof TABS[number]
 
-const NEYNAR_KEY = import.meta.env.VITE_NEYNAR_API_KEY as string | undefined
-
+const FARCASTER_EPOCH = 1609459200
+const HUB = 'https://hub.pinata.cloud'
+const CHANNELS = ['base', 'degen', 'higher', 'clanker', 'onchain', 'crypto']
 const AVATAR_COLORS = ['#2151f5', '#7c3aed', '#0891b2', '#059669', '#d97706', '#dc2626']
 
-function timeAgo(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime()
+function timeAgo(isoTs: string): string {
+  const diff = Date.now() - new Date(isoTs).getTime()
   const m = Math.floor(diff / 60000)
   if (m < 1) return 'just now'
   if (m < 60) return `${m}m`
@@ -21,90 +22,68 @@ function timeAgo(ts: string): string {
   return `${Math.floor(h / 24)}d`
 }
 
+function extractTag(text: string): string | undefined {
+  const lower = text.toLowerCase()
+  if (lower.includes('launch') || lower.includes('token')) return 'Token'
+  if (lower.includes('base chain') || lower.includes('onbase')) return 'Base'
+  if (lower.includes('defi') || lower.includes('yield')) return 'DeFi'
+  if (lower.includes('nft')) return 'NFT'
+  if (lower.includes('ai') || lower.includes('artificial intelligence')) return 'AI'
+  return undefined
+}
+
+interface HubMessage {
+  data: {
+    fid: number
+    timestamp: number
+    castAddBody: { text: string; embeds: { url?: string }[] }
+  }
+  hash: string
+}
+
 interface LivePost {
   id: string
-  author: { name: string; handle: string; initials: string; color: string; verified: boolean; pfpUrl?: string }
+  author: { name: string; handle: string; initials: string; color: string; verified: boolean }
   content: string
   timestamp: string
   likes: number
   reposts: number
   comments: number
   tag?: string
-  url?: string
-  source: 'farcaster' | 'static'
+  url: string
+  source: 'farcaster'
 }
 
-function mapCast(cast: Record<string, unknown>, index: number): LivePost {
-  const author = cast.author as Record<string, unknown>
-  const name = (author.display_name as string) || (author.username as string) || 'Unknown'
-  const reactions = cast.reactions as Record<string, unknown>
-  const replies = cast.replies as Record<string, unknown>
-  return {
-    id: cast.hash as string,
-    author: {
-      name,
-      handle: author.username as string,
-      initials: name.substring(0, 2).toUpperCase(),
-      color: AVATAR_COLORS[index % AVATAR_COLORS.length],
-      verified: !!(author.power_badge),
-      pfpUrl: (author.pfp_url as string) || undefined,
-    },
-    content: cast.text as string,
-    timestamp: timeAgo(cast.timestamp as string),
-    likes: (reactions?.likes_count as number) || 0,
-    reposts: (reactions?.recasts_count as number) || 0,
-    comments: (replies?.count as number) || 0,
-    tag: extractTag(cast.text as string),
-    url: `https://warpcast.com/${author.username}/${(cast.hash as string).substring(0, 10)}`,
-    source: 'farcaster',
+interface GeckoPool {
+  attributes: {
+    name: string
+    base_token_price_usd: string
+    volume_usd: { h24: string }
+    price_change_percentage: { h24: string }
+    transactions: { h24: { buys: number; sells: number } }
   }
 }
 
-function extractTag(text: string): string | undefined {
-  const lower = text.toLowerCase()
-  if (lower.includes('ai') || lower.includes('artificial intelligence')) return 'AI'
-  if (lower.includes('launch') || lower.includes('token')) return 'Token'
-  if (lower.includes('base chain') || lower.includes('onbase')) return 'Base'
-  if (lower.includes('defi') || lower.includes('yield')) return 'DeFi'
-  if (lower.includes('nft')) return 'NFT'
-  return undefined
-}
-
-function Avatar({ post }: { post: LivePost | FeedPost }) {
-  const p = post as LivePost
-  if (p.source === 'farcaster' && p.author.pfpUrl) {
-    return (
-      <img src={p.author.pfpUrl} alt={p.author.name}
-        className="w-9 h-9 rounded-full object-cover flex-shrink-0 select-none"
-        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-      />
-    )
-  }
-  const fp = post as FeedPost
-  return (
-    <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-white text-xs flex-shrink-0 select-none"
-      style={{ backgroundColor: fp.author.color }}>
-      {fp.author.initials}
-    </div>
-  )
+interface TrendingToken {
+  symbol: string
+  change: string
+  vol: string
+  buys: number
 }
 
 function LivePostCard({ post }: { post: LivePost }) {
-  const href = post.url || '#'
   return (
     <div className="relative mb-3 break-inside-avoid">
-      <a href={href} target={href !== '#' ? '_blank' : undefined} rel="noopener noreferrer"
+      <a href={post.url} target="_blank" rel="noopener noreferrer"
         className="block rounded-2xl border border-white/[0.07] bg-white/[0.02] hover:border-white/[0.12] hover:bg-white/[0.03] transition-all p-4 cursor-pointer">
         <div className="flex gap-3">
-          <Avatar post={post} />
+          <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-white text-xs flex-shrink-0 select-none"
+            style={{ backgroundColor: post.author.color }}>
+            {post.author.initials}
+          </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
               <span className="font-bold text-white text-[0.8125rem] leading-none">{post.author.name}</span>
-              {post.author.verified && (
-                <svg className="w-3.5 h-3.5 flex-shrink-0 text-[#2151f5]" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-              )}
               <span className="text-white/30 text-xs">@{post.author.handle}</span>
               <span className="text-white/20 text-[10px]">·</span>
               <span className="text-white/30 text-xs">{post.timestamp}</span>
@@ -115,30 +94,12 @@ function LivePostCard({ post }: { post: LivePost }) {
               )}
             </div>
             <p className="text-white/75 text-[0.8125rem] leading-relaxed whitespace-pre-line line-clamp-6">{post.content}</p>
-            <div className="flex items-center gap-5 text-white/25 mt-3">
-              <span className="flex items-center gap-1.5 text-xs">
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
-                {post.comments}
-              </span>
-              <span className="flex items-center gap-1.5 text-xs">
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M17 1l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                  <path d="M7 23l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
-                </svg>
-                {post.reposts}
-              </span>
-              <span className="flex items-center gap-1.5 text-xs">
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                </svg>
-                {post.likes >= 1000 ? `${(post.likes / 1000).toFixed(1)}K` : post.likes}
-              </span>
-              <span className="ml-auto">
-                <svg className="w-3 h-3 text-white/20" viewBox="0 0 1000 1000" fill="currentColor">
+            <div className="flex items-center gap-2 mt-3">
+              <span className="text-[10px] font-mono text-white/20 flex items-center gap-1">
+                <svg className="w-3 h-3" viewBox="0 0 1000 1000" fill="currentColor">
                   <path d="M257.778 155.556h484.444v688.889h-71.111v-244.445h-0.697c-7.056-85.189-78.308-151.111-165.414-151.111-87.107 0-158.359 65.922-165.414 151.111h-0.697v244.445h-81.111V155.556zM128.889 253.333l42.222 177.778h35.556V688.89h71.111V431.111h26.667V253.333H128.889zM771.111 253.333v177.778h26.667V688.89h71.111V431.111h35.556l42.222-177.778H771.111z" />
                 </svg>
+                Open on Warpcast
               </span>
             </div>
           </div>
@@ -205,23 +166,6 @@ function StaticPostCard({ post }: { post: FeedPost }) {
   )
 }
 
-interface GeckoPool {
-  attributes: {
-    name: string
-    base_token_price_usd: string
-    volume_usd: { h24: string }
-    price_change_percentage: { h24: string }
-    transactions: { h24: { buys: number; sells: number } }
-  }
-}
-
-interface TrendingToken {
-  symbol: string
-  change: string
-  vol: string
-  buys: number
-}
-
 export default function Feed() {
   const [activeTab, setActiveTab] = useState<Tab>('Stream')
   const [livePosts, setLivePosts] = useState<LivePost[]>([])
@@ -230,26 +174,77 @@ export default function Feed() {
   const [lastUpdated, setLastUpdated] = useState<string>('')
 
   const fetchFarcasterFeed = useCallback(async () => {
-    if (!NEYNAR_KEY) return
     setLoadingPosts(true)
     try {
-      const params = new URLSearchParams({
-        feed_type: 'filter',
-        filter_type: 'keyword',
-        q: 'base crypto ai token launch onchain defi',
-        limit: '40',
-        with_recasts: 'false',
+      const results = await Promise.allSettled(
+        CHANNELS.map(ch =>
+          fetch(`${HUB}/v1/castsByParent?url=https://warpcast.com/~/channel/${ch}&pageSize=20`)
+            .then(r => r.json())
+        )
+      )
+
+      const allCasts: HubMessage[] = results.flatMap(r =>
+        r.status === 'fulfilled' ? (r.value.messages || []) : []
+      )
+
+      allCasts.sort((a, b) => b.data.timestamp - a.data.timestamp)
+
+      const seen = new Set<string>()
+      const unique = allCasts.filter(c => {
+        if (seen.has(c.hash)) return false
+        seen.add(c.hash)
+        return c.data.castAddBody?.text?.length > 10
+      }).slice(0, 40)
+
+      const fidSet = new Set(unique.map(c => c.data.fid))
+      const userMap = new Map<number, { username: string; displayName: string }>()
+
+      await Promise.allSettled(
+        Array.from(fidSet).map(async fid => {
+          try {
+            const [uRes, dRes] = await Promise.all([
+              fetch(`${HUB}/v1/userDataByFid?fid=${fid}&user_data_type=USER_DATA_TYPE_USERNAME`).then(r => r.json()),
+              fetch(`${HUB}/v1/userDataByFid?fid=${fid}&user_data_type=USER_DATA_TYPE_DISPLAY`).then(r => r.json()),
+            ])
+            userMap.set(fid, {
+              username: uRes.data?.userDataBody?.value || `fid${fid}`,
+              displayName: dRes.data?.userDataBody?.value || uRes.data?.userDataBody?.value || `User ${fid}`,
+            })
+          } catch {
+            userMap.set(fid, { username: `fid${fid}`, displayName: `User ${fid}` })
+          }
+        })
+      )
+
+      const mapped: LivePost[] = unique.map(cast => {
+        const fid = cast.data.fid
+        const user = userMap.get(fid) || { username: `fid${fid}`, displayName: `User ${fid}` }
+        const tsMs = (cast.data.timestamp + FARCASTER_EPOCH) * 1000
+        const name = user.displayName
+        return {
+          id: cast.hash,
+          author: {
+            name,
+            handle: user.username,
+            initials: name.substring(0, 2).toUpperCase(),
+            color: AVATAR_COLORS[fid % AVATAR_COLORS.length],
+            verified: false,
+          },
+          content: cast.data.castAddBody.text,
+          timestamp: timeAgo(new Date(tsMs).toISOString()),
+          likes: 0,
+          reposts: 0,
+          comments: 0,
+          tag: extractTag(cast.data.castAddBody.text),
+          url: `https://warpcast.com/~/cast/${cast.hash}`,
+          source: 'farcaster',
+        }
       })
-      const res = await fetch(`https://api.neynar.com/v2/farcaster/feed?${params}`, {
-        headers: { accept: 'application/json', api_key: NEYNAR_KEY },
-      })
-      if (!res.ok) throw new Error('Neynar fetch failed')
-      const data = await res.json() as { casts: Record<string, unknown>[] }
-      const mapped = (data.casts || []).map((c, i) => mapCast(c, i))
+
       setLivePosts(mapped)
       setLastUpdated(new Date().toLocaleTimeString())
     } catch {
-      // fall through to static
+      // silent fail, keep existing posts
     } finally {
       setLoadingPosts(false)
     }
@@ -295,7 +290,7 @@ export default function Feed() {
     activeTab === 'Launches' ? launchPosts :
     streamPosts
 
-  const showLive = activeTab === 'Stream' && NEYNAR_KEY && livePosts.length > 0
+  const showLive = activeTab === 'Stream' && livePosts.length > 0
 
   const fallbackTokens = [
     { symbol: 'HIGHER', change: '+847%', vol: '$4.2M', buys: 203 },
@@ -316,7 +311,7 @@ export default function Feed() {
           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-center gap-4 mb-10">
             <div className="hidden md:flex md:items-center gap-2">
               <p className="text-[10px] font-mono uppercase tracking-widest text-white/25">Base chain intelligence</p>
-              {showLive && lastUpdated && (
+              {lastUpdated && (
                 <span className="inline-flex items-center gap-1 text-[9px] font-mono text-green-400/60">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
                   live · {lastUpdated}
@@ -333,7 +328,7 @@ export default function Feed() {
                         activeTab === tab ? 'text-[#7ba5ff]' : 'text-white/40 hover:text-white/80'
                       }`}>
                       {tab}
-                      {tab === 'Stream' && NEYNAR_KEY && <span className="ml-1.5 inline-flex w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />}
+                      {tab === 'Stream' && <span className="ml-1.5 inline-flex w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />}
                     </button>
                   </li>
                 ))}
@@ -347,20 +342,9 @@ export default function Feed() {
             </div>
           </div>
 
-          {!NEYNAR_KEY && activeTab === 'Stream' && (
-            <div className="mb-6 rounded-xl border border-[#2151f5]/20 bg-[#2151f5]/5 px-4 py-3 flex items-center gap-3">
-              <svg className="w-4 h-4 text-[#7ba5ff] flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
-              </svg>
-              <p className="text-[#7ba5ff]/80 text-xs font-mono">
-                Connect Farcaster: add <span className="text-[#7ba5ff] font-semibold">VITE_NEYNAR_API_KEY</span> to enable live stream from crypto &amp; AI accounts.
-              </p>
-            </div>
-          )}
-
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8">
             <div className="columns-1 gap-3">
-              {loadingPosts && (
+              {loadingPosts && livePosts.length === 0 && (
                 <div className="flex items-center justify-center py-10 gap-2 text-white/30 text-sm font-mono">
                   <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M21 12a9 9 0 1 1-6.219-8.56" />
