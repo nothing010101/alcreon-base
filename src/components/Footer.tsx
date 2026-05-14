@@ -1,41 +1,40 @@
 export default function Footer() {
+  const LOGO_PATH_1 = "M120.758 42.79c0-24.454 0-36.682-7.967-41.267-7.965-4.587-18.588 1.527-39.831 13.754L57.603 24.117c-21.244 12.228-31.866 18.342-31.866 27.512s10.622 15.284 31.866 27.512l15.357 8.841c21.244 12.228 31.867 18.343 39.834 13.756 7.965-4.585 7.965-16.813 7.965-41.267v-17.68zM50.36 91.648C29.115 79.42 18.493 73.306 10.525 77.892 2.56 82.478 2.56 94.705 2.56 119.16v17.68c0 24.455 0 36.682 7.967 41.268 7.966 4.585 18.589-1.527 39.833-13.755l15.357-8.841c21.243-12.228 31.865-18.342 31.865-27.512 0-9.17-10.622-15.284-31.866-27.512L50.36 91.648zM234.995 42.79c0-24.454 0-36.682-7.967-41.267-7.965-4.587-18.588 1.527-39.831 13.754l-15.358 8.84c-21.244 12.228-31.866 18.342-31.866 27.512s10.622 15.284 31.866 27.512l15.357 8.841c21.244 12.228 31.867 18.343 39.834 13.756 7.965-4.585 7.965-16.813 7.965-41.267v-17.68z"
+  const LOGO_PATH_2 = "M357.28 219L430.667 46.2H464.587L537.547 219H504.267L485.28 173.773H408.693L389.493 219H357.28ZM418.933 146.467H476.107L448.16 79.48H447.093L418.933 146.467ZM589.438 219C579.539 219 571.603 216.44 565.63 211.32C559.657 206.2 556.67 198.008 556.67 186.744V37.24H589.438V183.416C589.438 186.829 590.291 189.389 591.998 191.096C593.875 192.803 596.435 193.656 599.678 193.656H609.662V219H589.438Z"
+
   return (
-    <footer className="relative border-t border-white/[0.06] bg-dark-900">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-10 mb-12">
+    <footer className="border-t border-white/[0.08] bg-[#060a10] py-12 md:py-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-12">
           {/* Brand */}
-          <div className="md:col-span-2">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-9 h-9">
-                <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <rect width="36" height="36" rx="10" fill="#1652F0" />
-                  <path d="M18 7L29 29H7L18 7Z" fill="white" fillOpacity="0.95" />
-                  <circle cx="18" cy="21" r="3.5" fill="#1652F0" />
-                </svg>
-              </div>
-              <div>
-                <div className="text-white font-bold text-lg">Alcreon</div>
-                <div className="text-base-light text-xs font-mono">AI Intelligence on Base</div>
-              </div>
-            </div>
-            <p className="text-white/40 text-sm leading-relaxed max-w-xs mb-6">
-              The neural intelligence layer for Base Chain. 
-              Autonomous agents, decentralized inference, and AI-powered token creation — 
-              all on-chain.
+          <div>
+            <a href="/" className="inline-flex items-center mb-4 opacity-80 hover:opacity-100 transition-opacity">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1317 256" width="100" height="20" className="text-white">
+                <path fill="currentColor" d={LOGO_PATH_1} />
+                <path fill="currentColor" d={LOGO_PATH_2} />
+              </svg>
+            </a>
+            <p className="text-white/40 text-sm leading-relaxed max-w-xs font-body">
+              Independent intelligence on token launches and on-chain signal on Base.
             </p>
-            <div className="flex items-center gap-2 p-3 bg-dark-700/50 border border-white/[0.06] rounded-xl w-fit">
-              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-white/50 text-xs font-mono">All systems operational</span>
+            <div className="mt-4">
+              <span className="base-badge">on Base</span>
             </div>
           </div>
 
-          {/* Protocol */}
+          {/* Navigate */}
           <div>
-            <h4 className="text-white/60 text-xs font-mono uppercase tracking-widest mb-4">Protocol</h4>
-            <ul className="space-y-3">
-              {['Neural Engine', 'Agent SDK', 'Token Launcher', 'ZK Inference', 'Governance'].map((item) => (
-                <li key={item}>
-                  <a href="#" className="text-white/40 hover:text-white text-sm transition-colors duration-200">{item}</a>
+            <h4 className="label-mono mb-4">Navigate</h4>
+            <ul className="space-y-2.5">
+              {[
+                { label: 'Tokens', href: '#tokens' },
+                { label: 'Launches', href: '#launches' },
+                { label: 'Intelligence', href: '#intelligence' },
+              ].map((item) => (
+                <li key={item.label}>
+                  <a href={item.href} className="text-white/40 hover:text-white text-sm font-body transition-colors">
+                    {item.label}
+                  </a>
                 </li>
               ))}
             </ul>
@@ -43,28 +42,25 @@ export default function Footer() {
 
           {/* Ecosystem */}
           <div>
-            <h4 className="text-white/60 text-xs font-mono uppercase tracking-widest mb-4">Ecosystem</h4>
-            <ul className="space-y-3">
+            <h4 className="label-mono mb-4">Ecosystem</h4>
+            <ul className="space-y-2.5">
               {[
-                { label: 'Clanker.world', href: 'https://clanker.world', external: true },
-                { label: 'Base Chain', href: 'https://base.org', external: true },
-                { label: 'Coinbase Wallet', href: 'https://wallet.coinbase.com', external: true },
-                { label: 'Basescan', href: 'https://basescan.org', external: true },
-                { label: 'Documentation', href: '#', external: false },
+                { label: 'Clanker.world', href: 'https://clanker.world' },
+                { label: 'Base', href: 'https://base.org' },
+                { label: 'Basescan', href: 'https://basescan.org' },
+                { label: 'Warpcast', href: 'https://warpcast.com' },
               ].map((item) => (
                 <li key={item.label}>
                   <a
                     href={item.href}
-                    target={item.external ? '_blank' : undefined}
-                    rel={item.external ? 'noopener noreferrer' : undefined}
-                    className="text-white/40 hover:text-base-light text-sm transition-colors duration-200 flex items-center gap-1"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-white/40 hover:text-white text-sm font-body transition-colors inline-flex items-center gap-1.5 group"
                   >
                     {item.label}
-                    {item.external && (
-                      <svg className="w-3 h-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                      </svg>
-                    )}
+                    <svg className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
                   </a>
                 </li>
               ))}
@@ -72,24 +68,14 @@ export default function Footer() {
           </div>
         </div>
 
-        {/* Bottom bar */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-8 border-t border-white/[0.06]">
-          <p className="text-white/25 text-xs font-mono">
-            © 2025 Alcreon. All rights reserved. Built on Base.
+        <div className="divider pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p className="label-mono">© 2025 Alcreon. Built on Base.</p>
+          <p className="label-mono">
+            Launches powered by{' '}
+            <a href="https://clanker.world" target="_blank" rel="noopener noreferrer" className="text-base-light hover:text-white transition-colors">
+              Clanker
+            </a>
           </p>
-          <div className="flex items-center gap-6">
-            {['Privacy', 'Terms', 'Security'].map((item) => (
-              <a key={item} href="#" className="text-white/25 hover:text-white/50 text-xs transition-colors">
-                {item}
-              </a>
-            ))}
-          </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-base-blue/10 border border-base-blue/20 rounded-full">
-            <div className="w-3 h-3 rounded-full bg-base-blue flex items-center justify-center">
-              <div className="w-1.5 h-1.5 rounded-full bg-white" />
-            </div>
-            <span className="text-base-light text-xs font-mono font-medium">Base Chain</span>
-          </div>
         </div>
       </div>
     </footer>

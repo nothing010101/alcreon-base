@@ -1,20 +1,21 @@
 import Nav from './components/Nav'
 import Hero from './components/Hero'
-import Features from './components/Features'
+import SignalStrip from './components/SignalStrip'
+import Launches from './components/Launches'
 import Intelligence from './components/Intelligence'
-import HowItWorks from './components/HowItWorks'
 import LaunchCTA from './components/LaunchCTA'
 import Footer from './components/Footer'
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-dark-900 overflow-x-hidden">
+    <div className="min-h-screen bg-[#060a10]">
+      <a href="#main-content" className="skip-link">Skip to main content</a>
       <Nav />
-      <main>
+      <main id="main-content">
         <Hero />
-        <Features />
+        <SignalStrip />
+        <Launches />
         <Intelligence />
-        <HowItWorks />
         <LaunchCTA />
       </main>
       <Footer />

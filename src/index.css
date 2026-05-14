@@ -3,73 +3,63 @@
 @tailwind utilities;
 
 @layer base {
-  * {
+  *, *::before, *::after {
     box-sizing: border-box;
   }
-  
+
   html {
     scroll-behavior: smooth;
+    color-scheme: dark;
   }
 
   body {
-    @apply bg-dark-900 text-white font-sans;
+    background-color: #060a10;
+    color: #f5f5f0;
+    font-family: 'Satoshi', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
   }
 
   ::selection {
-    background: rgba(22, 82, 240, 0.4);
+    background: rgba(22, 82, 240, 0.35);
+    color: #fff;
   }
 }
 
 @layer components {
-  .btn-primary {
-    @apply inline-flex items-center gap-2 px-6 py-3 bg-base-blue text-white font-semibold rounded-xl
-           hover:bg-base-light transition-all duration-200 hover:shadow-[0_0_30px_rgba(22,82,240,0.5)]
-           active:scale-95;
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-white focus:text-black focus:rounded-lg focus:text-sm;
   }
 
-  .btn-outline {
-    @apply inline-flex items-center gap-2 px-6 py-3 border border-white/20 text-white font-semibold rounded-xl
-           hover:border-base-blue hover:bg-base-blue/10 transition-all duration-200 active:scale-95;
+  .nav-link {
+    @apply inline-flex min-h-[44px] items-center rounded-lg px-3 text-[0.9375rem] font-medium tracking-wide transition-colors duration-300 text-white/70 hover:text-white;
   }
 
-  .card-glass {
-    @apply bg-white/[0.03] border border-white/[0.08] rounded-2xl backdrop-blur-sm
-           hover:border-base-blue/30 hover:bg-base-blue/5 transition-all duration-300;
+  .btn-launch {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
+           bg-base-blue text-white hover:bg-base-light active:scale-95;
   }
 
-  .tag-base {
-    @apply inline-flex items-center gap-1.5 px-3 py-1 bg-base-blue/15 border border-base-blue/30
-           text-base-light text-xs font-semibold rounded-full uppercase tracking-wider;
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
+           text-white/70 hover:text-white hover:bg-white/5;
   }
 
-  .gradient-text {
-    @apply bg-gradient-to-r from-white via-white to-base-light bg-clip-text text-transparent;
+  .card-article {
+    @apply block rounded-2xl overflow-hidden bg-neutral-900/60 border border-white/[0.07]
+           hover:border-white/15 transition-all duration-300;
   }
 
-  .blue-gradient-text {
-    @apply bg-gradient-to-r from-base-light to-blue-300 bg-clip-text text-transparent;
-  }
-}
-
-@layer utilities {
-  .grid-bg {
-    background-image: linear-gradient(rgba(22, 82, 240, 0.06) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(22, 82, 240, 0.06) 1px, transparent 1px);
-    background-size: 60px 60px;
+  .divider {
+    @apply border-t border-white/[0.08];
   }
 
-  .noise-bg {
-    position: relative;
+  .label-mono {
+    @apply font-mono text-xs uppercase tracking-widest text-white/40;
   }
 
-  .noise-bg::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-    pointer-events: none;
-    opacity: 0.4;
+  .base-badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-base-blue/15 border border-base-blue/25 text-base-light font-mono text-[11px] uppercase tracking-widest font-semibold;
   }
 }

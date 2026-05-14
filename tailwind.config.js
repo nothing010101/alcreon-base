@@ -4,50 +4,42 @@ export default {
   theme: {
     extend: {
       colors: {
+        background: '#060a10',
+        foreground: '#f5f5f0',
         base: {
           blue: '#1652F0',
           light: '#4B7BF5',
-          dark: '#0D35B3',
         },
-        dark: {
-          900: '#05050A',
-          800: '#0A0A14',
-          700: '#10101E',
-          600: '#16162A',
+        neutral: {
+          950: '#060a10',
+          900: '#0d1117',
+          800: '#161b22',
+          700: '#21262d',
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'monospace'],
+        serif: ['"Instrument Serif"', 'Georgia', 'serif'],
+        body: ['Satoshi', 'system-ui', 'sans-serif'],
+        mono: ['"Geist Mono"', 'monospace'],
+      },
+      fontSize: {
+        'display': ['clamp(2.5rem, 7vw, 5.5rem)', { lineHeight: '1.05', letterSpacing: '-0.02em' }],
+        'display-sm': ['clamp(2rem, 5vw, 3.75rem)', { lineHeight: '1.08', letterSpacing: '-0.02em' }],
+        'headline': ['clamp(1.5rem, 3vw, 2.25rem)', { lineHeight: '1.2', letterSpacing: '-0.015em' }],
       },
       animation: {
-        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'float': 'float 6s ease-in-out infinite',
-        'glow': 'glow 2s ease-in-out infinite alternate',
-        'scan': 'scan 3s linear infinite',
+        'fade-up': 'fadeUp 0.8s ease forwards',
+        'fade-in': 'fadeIn 1s ease forwards',
       },
       keyframes: {
-        float: {
-          '0%, 100%': { transform: 'translateY(0px)' },
-          '50%': { transform: 'translateY(-20px)' },
+        fadeUp: {
+          '0%': { opacity: '0', transform: 'translateY(24px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
         },
-        glow: {
-          '0%': { boxShadow: '0 0 20px rgba(22, 82, 240, 0.3)' },
-          '100%': { boxShadow: '0 0 60px rgba(22, 82, 240, 0.8)' },
+        fadeIn: {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
         },
-        scan: {
-          '0%': { transform: 'translateY(-100%)' },
-          '100%': { transform: 'translateY(100vh)' },
-        },
-      },
-      backgroundImage: {
-        'grid-pattern': `linear-gradient(rgba(22, 82, 240, 0.05) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(22, 82, 240, 0.05) 1px, transparent 1px)`,
-        'hero-gradient': 'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(22, 82, 240, 0.25) 0%, transparent 70%)',
-        'cta-gradient': 'linear-gradient(135deg, #1652F0 0%, #0D35B3 50%, #05050A 100%)',
-      },
-      backgroundSize: {
-        'grid': '60px 60px',
       },
     },
   },
