@@ -89,7 +89,7 @@ function Avatar({ post }: { post: LivePost | FeedPost }) {
   )
 }
 
-function LivePostCard({ post, index }: { post: LivePost; index: number }) {
+function LivePostCard({ post }: { post: LivePost }) {
   const href = post.url || '#'
   return (
     <div className="relative mb-3 break-inside-avoid">
@@ -369,7 +369,7 @@ export default function Feed() {
                 </div>
               )}
               {showLive
-                ? livePosts.map((p, i) => <LivePostCard key={p.id} post={p} index={i} />)
+                ? livePosts.map((p) => <LivePostCard key={p.id} post={p} />)
                 : !loadingPosts && staticPosts.map(p => <StaticPostCard key={p.id} post={p} />)
               }
               {!loadingPosts && (
