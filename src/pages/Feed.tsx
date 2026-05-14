@@ -5,6 +5,13 @@ import Footer from '../components/Footer'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface ClankerTrustStatus {
+  isTrustedDeployer: boolean
+  isTrustedClanker: boolean
+  fidMatchesDeployer: boolean
+  verifiedAddresses: string[]
+}
+
 interface ClankerMarket {
   marketCap: number
   price: number
@@ -32,6 +39,7 @@ interface ClankerToken {
   type: string
   pair: string | null
   related?: ClankerRelated
+  trustStatus?: ClankerTrustStatus
 }
 
 interface ClankerApiResponse {
@@ -39,8 +47,32 @@ interface ClankerApiResponse {
   nextCursor?: string
 }
 
-const AVATAR_COLORS = ['#2151f5', '#7c3aed', '#0891b2', '#059669', '#d97706', '#dc2626', '#db2777']
+interface DexScreenerPair {
+  baseToken: { address: string; symbol: string; name: string }
+  priceUsd: string
+  volume: { h1: number; h24: number }
+  liquidity: { usd: number }
+  priceChange: { h1: number }
+}
 
+interface DexScreenerResponse {
+  pairs: DexScreenerPair[] | null
+}
+
+interface DexData {
+  priceUsd: string
+  volH1: number
+  volH24: number
+  liquidity: number
+  changeH1: number
+}
+
+interface EnrichedToken extends ClankerToken {
+  dex?: DexData
+  dexFailed?: boolean
+}
+
+const AVATAR_COLORS = ['#2151f5', '#7c3aed', '#0891b2', '#059669', '#d97706', '#dc2626', '#db2777']
 const TABS = ['Latest', 'Briefing', 'Trending'] as const
 type Tab = typeof TABS[number]
 
@@ -56,17 +88,29 @@ function timeAgo(iso: string): string {
   return `${Math.floor(h / 24)}d`
 }
 
-function fmtMarketCap(v: number): string {
+function ageMinutes(iso: string): number {
+  return (Date.now() - new Date(iso).getTime()) / 60000
+}
+
+function fmtMc(v: number): string {
   if (v >= 1_000_000_000) return `$${(v / 1_000_000_000).toFixed(1)}B`
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`
   if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`
   return `$${v.toFixed(2)}`
 }
 
-function fmtPrice(v: number): string {
-  if (v >= 1) return `$${v.toFixed(2)}`
-  if (v >= 0.001) return `$${v.toFixed(4)}`
-  return `$${v.toExponential(2)}`
+function fmtPrice(v: number | string): string {
+  const n = typeof v === 'string' ? parseFloat(v) : v
+  if (isNaN(n)) return '—'
+  if (n >= 1) return `$${n.toFixed(2)}`
+  if (n >= 0.001) return `$${n.toFixed(5)}`
+  return `$${n.toExponential(2)}`
+}
+
+function fmtVol(v: number): string {
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`
+  if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}K`
+  return `$${v.toFixed(0)}`
 }
 
 function typeLabel(t: string): string {
@@ -83,6 +127,11 @@ function initials(name: string): string {
   return name.substring(0, 2).toUpperCase()
 }
 
+function isTrusted(token: ClankerToken): boolean {
+  if (!token.trustStatus) return true
+  return token.trustStatus.isTrustedDeployer || token.trustStatus.isTrustedClanker
+}
+
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function SkeletonCard() {
@@ -96,7 +145,8 @@ function SkeletonCard() {
             <div className="h-3.5 w-12 rounded bg-white/[0.04]" />
             <div className="h-3.5 w-10 rounded bg-white/[0.04] ml-auto" />
           </div>
-          <div className="h-3 w-32 rounded bg-white/[0.04]" />
+          <div className="h-3 w-40 rounded bg-white/[0.04]" />
+          <div className="h-3 w-52 rounded bg-white/[0.04]" />
           <div className="flex gap-2 mt-2">
             <div className="h-5 w-14 rounded-full bg-white/[0.04]" />
             <div className="h-5 w-10 rounded-full bg-white/[0.04]" />
@@ -125,85 +175,192 @@ function SidebarSkeletonRow() {
 
 // ─── Token Card ───────────────────────────────────────────────────────────────
 
-function TokenCard({ token }: { token: ClankerToken }) {
+function TokenCard({ token }: { token: EnrichedToken }) {
+  const [expanded, setExpanded] = useState(false)
+  const [holderCount, setHolderCount] = useState<number | null>(null)
+  const [holderLoading, setHolderLoading] = useState(false)
+  const fetchedRef = useRef(false)
+
   const mc = token.related?.market?.marketCap ?? 0
-  const price = token.related?.market?.price ?? 0
   const deployer = token.related?.user?.display_name || token.related?.user?.username
   const pfp = token.related?.user?.pfp_url
+  const trusted = isTrusted(token)
+  const dex = token.dex
+
+  const fetchHolders = useCallback(async () => {
+    if (fetchedRef.current) return
+    const apiKey = import.meta.env.VITE_BASESCAN_API_KEY
+    if (!apiKey) return
+    fetchedRef.current = true
+    setHolderLoading(true)
+    try {
+      const url = `/api/basescan/api?module=token&action=tokeninfo&contractaddress=${token.contract_address}&apikey=${apiKey}`
+      const res = await fetch(url)
+      if (!res.ok) throw new Error('basescan error')
+      const json = await res.json() as { status: string; result: { holdersCount?: string }[] }
+      if (json.status === '1' && json.result?.[0]?.holdersCount) {
+        setHolderCount(parseInt(json.result[0].holdersCount, 10))
+      } else {
+        setHolderCount(-1)
+      }
+    } catch {
+      setHolderCount(-1)
+    } finally {
+      setHolderLoading(false)
+    }
+  }, [token.contract_address])
+
+  function handleExpand(e: React.MouseEvent) {
+    e.preventDefault()
+    setExpanded(prev => {
+      if (!prev) fetchHolders()
+      return !prev
+    })
+  }
 
   return (
     <div className="mb-3 break-inside-avoid">
-      <a
-        href={`https://www.clanker.world/clanker/${token.contract_address}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block rounded-2xl border border-white/[0.07] bg-white/[0.02] hover:border-white/[0.12] hover:bg-white/[0.03] transition-all p-4 cursor-pointer"
-      >
-        <div className="flex gap-3">
-          {/* Token image / avatar */}
-          {token.img_url ? (
-            <img
-              src={token.img_url}
-              alt={token.name}
-              className="w-10 h-10 rounded-xl object-cover flex-shrink-0 bg-white/[0.04]"
-              onError={(e) => {
-                const target = e.currentTarget
-                target.style.display = 'none'
-                const sibling = target.nextElementSibling as HTMLElement | null
-                if (sibling) sibling.style.display = 'flex'
-              }}
-            />
-          ) : null}
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white text-xs flex-shrink-0 select-none"
-            style={{ backgroundColor: avatarColor(token.id), display: token.img_url ? 'none' : 'flex' }}
-          >
-            {initials(token.name)}
-          </div>
-
-          <div className="flex-1 min-w-0">
-            {/* Header row */}
-            <div className="flex items-center gap-1.5 flex-wrap mb-1">
-              <span className="font-bold text-white text-[0.8125rem] leading-none truncate">{token.name}</span>
-              <span className="text-white/40 text-xs font-mono">${token.symbol}</span>
-              <span className="ml-auto text-white/25 text-[10px] font-mono flex-shrink-0">{timeAgo(token.created_at)}</span>
+      <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] hover:border-white/[0.12] hover:bg-white/[0.03] transition-all overflow-hidden">
+        {/* Main card — click opens clanker */}
+        <a
+          href={`https://www.clanker.world/clanker/${token.contract_address}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block p-4"
+        >
+          <div className="flex gap-3">
+            {/* Image / avatar */}
+            {token.img_url ? (
+              <img
+                src={token.img_url}
+                alt={token.name}
+                className="w-10 h-10 rounded-xl object-cover flex-shrink-0 bg-white/[0.04]"
+                onError={(e) => {
+                  const t = e.currentTarget
+                  t.style.display = 'none'
+                  const sib = t.nextElementSibling as HTMLElement | null
+                  if (sib) sib.style.display = 'flex'
+                }}
+              />
+            ) : null}
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white text-xs flex-shrink-0 select-none"
+              style={{ backgroundColor: avatarColor(token.id), display: token.img_url ? 'none' : 'flex' }}
+            >
+              {initials(token.name)}
             </div>
 
-            {/* Market cap + price */}
-            <div className="flex items-center gap-3 mb-2">
-              {mc > 0 && (
-                <span className="text-white/70 text-xs font-mono">
-                  <span className="text-white/30 text-[10px] mr-0.5">mcap</span>
-                  {fmtMarketCap(mc)}
-                </span>
-              )}
-              {price > 0 && (
-                <span className="text-white/40 text-[10px] font-mono">{fmtPrice(price)}</span>
-              )}
-            </div>
-
-            {/* Badges + deployer */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {token.pair && (
-                <span className="text-[9px] font-mono uppercase tracking-widest text-white/40 bg-white/[0.06] border border-white/10 px-1.5 py-0.5 rounded-full">
-                  {token.pair}
-                </span>
-              )}
-              <span className="text-[9px] font-mono uppercase tracking-widest text-[#7ba5ff]/60 bg-[#2151f5]/10 border border-[#2151f5]/20 px-1.5 py-0.5 rounded-full">
-                {typeLabel(token.type)}
-              </span>
-              {deployer && (
-                <span className="ml-auto flex items-center gap-1 text-[10px] text-white/25">
-                  {pfp && (
-                    <img src={pfp} alt={deployer} className="w-3.5 h-3.5 rounded-full object-cover" />
+            <div className="flex-1 min-w-0">
+              {/* Row 1: name + badges */}
+              <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                <span className="font-bold text-white text-[0.8125rem] leading-none">{token.name}</span>
+                <span className="text-white/40 text-xs font-mono">${token.symbol}</span>
+                {!trusted && (
+                  <span className="text-[9px] font-mono text-amber-400/80 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded-full">
+                    ⚠ Unverified
+                  </span>
+                )}
+                <div className="ml-auto flex items-center gap-1">
+                  {token.pair && (
+                    <span className="text-[9px] font-mono uppercase tracking-widest text-white/40 bg-white/[0.06] border border-white/10 px-1.5 py-0.5 rounded-full">
+                      {token.pair}
+                    </span>
                   )}
-                  {deployer}
-                </span>
+                  <span className="text-[9px] font-mono uppercase tracking-widest text-[#7ba5ff]/60 bg-[#2151f5]/10 border border-[#2151f5]/20 px-1.5 py-0.5 rounded-full">
+                    {typeLabel(token.type)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Row 2: deployer + time */}
+              <div className="flex items-center gap-1.5 mb-2 text-[10px] text-white/30 font-mono">
+                {deployer && (
+                  <>
+                    {pfp && <img src={pfp} alt={deployer} className="w-3.5 h-3.5 rounded-full object-cover" />}
+                    <span>@{deployer}</span>
+                    <span className="text-white/15">·</span>
+                  </>
+                )}
+                <span>{timeAgo(token.created_at)}</span>
+              </div>
+
+              {/* Row 3: MC / Price / Liq */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-1.5 text-xs font-mono">
+                {mc > 0 && (
+                  <span className="text-white/55">
+                    <span className="text-white/25 text-[10px]">MC </span>{fmtMc(mc)}
+                  </span>
+                )}
+                {dex && (
+                  <>
+                    <span className="text-white/55">
+                      <span className="text-white/25 text-[10px]">Price </span>{fmtPrice(dex.priceUsd)}
+                    </span>
+                    {dex.liquidity > 0 && (
+                      <span className="text-white/55">
+                        <span className="text-white/25 text-[10px]">Liq </span>{fmtVol(dex.liquidity)}
+                      </span>
+                    )}
+                  </>
+                )}
+                {token.dexFailed && !dex && (
+                  <span className="text-white/20 text-[10px]">market data unavailable</span>
+                )}
+              </div>
+
+              {/* Row 4: Vol 1h / 24h change */}
+              {dex && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono">
+                  {dex.volH1 > 0 && (
+                    <span className="text-white/45">
+                      <span className="text-white/25 text-[10px]">Vol 1h </span>{fmtVol(dex.volH1)}
+                    </span>
+                  )}
+                  {dex.changeH1 !== 0 && (
+                    <span className={dex.changeH1 >= 0 ? 'text-green-400' : 'text-red-400'}>
+                      24h: {dex.changeH1 >= 0 ? '+' : ''}{dex.changeH1.toFixed(1)}%
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           </div>
+        </a>
+
+        {/* Expand toggle */}
+        <div className="border-t border-white/[0.05] px-4 py-2 flex items-center justify-between">
+          <button
+            onClick={handleExpand}
+            className="text-[10px] font-mono text-white/20 hover:text-white/50 transition-colors"
+          >
+            {expanded ? '▲ less' : '▼ holders'}
+          </button>
+          <a
+            href={`https://basescan.org/token/${token.contract_address}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] font-mono text-white/15 hover:text-white/40 transition-colors"
+          >
+            basescan ↗
+          </a>
         </div>
-      </a>
+
+        {/* Expanded: holders */}
+        {expanded && (
+          <div className="px-4 pb-3 text-xs font-mono text-white/40">
+            {holderLoading && <span className="text-white/25">Loading holders...</span>}
+            {!holderLoading && holderCount !== null && holderCount >= 0 && (
+              <span>Holders: <span className="text-white/70">{holderCount.toLocaleString()}</span></span>
+            )}
+            {!holderLoading && holderCount === -1 && (
+              <span className="text-white/20">Holders: —</span>
+            )}
+            {!holderLoading && holderCount === null && !import.meta.env.VITE_BASESCAN_API_KEY && (
+              <span className="text-white/20">Set VITE_BASESCAN_API_KEY to see holders</span>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -230,18 +387,54 @@ function BriefingPlaceholder() {
   )
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── Main Feed ────────────────────────────────────────────────────────────────
 
 export default function Feed() {
   const [activeTab, setActiveTab] = useState<Tab>('Latest')
-  const [tokens, setTokens] = useState<ClankerToken[]>([])
+  const [tokens, setTokens] = useState<EnrichedToken[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [cursor, setCursor] = useState<string | undefined>()
   const [loadingMore, setLoadingMore] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<string>('')
+  const [hideUnverified, setHideUnverified] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // ── DexScreener batch fetch ─────────────────────────────────────────────────
+  const fetchDex = useCallback(async (list: ClankerToken[]): Promise<Map<string, DexData>> => {
+    const map = new Map<string, DexData>()
+    if (list.length === 0) return map
+    try {
+      const addresses = list.map(t => t.contract_address).join(',')
+      const res = await fetch(`/api/dexscreener/tokens/v1/base/${addresses}`)
+      if (!res.ok) return map
+      const json = (await res.json()) as DexScreenerResponse
+      const pairs = json.pairs ?? []
+      // Group by base token address, take most liquid pair
+      const grouped = new Map<string, DexScreenerPair>()
+      for (const pair of pairs) {
+        const addr = pair.baseToken.address.toLowerCase()
+        const existing = grouped.get(addr)
+        if (!existing || (pair.liquidity?.usd ?? 0) > (existing.liquidity?.usd ?? 0)) {
+          grouped.set(addr, pair)
+        }
+      }
+      for (const [addr, pair] of grouped) {
+        map.set(addr, {
+          priceUsd: pair.priceUsd ?? '0',
+          volH1: pair.volume?.h1 ?? 0,
+          volH24: pair.volume?.h24 ?? 0,
+          liquidity: pair.liquidity?.usd ?? 0,
+          changeH1: pair.priceChange?.h1 ?? 0,
+        })
+      }
+    } catch {
+      // dex fetch failed — tokens will show dexFailed flag
+    }
+    return map
+  }, [])
+
+  // ── Clanker + DexScreener combined fetch ────────────────────────────────────
   const fetchTokens = useCallback(async (append = false, currentCursor?: string) => {
     if (append) setLoadingMore(true)
     else setLoading(true)
@@ -260,9 +453,19 @@ export default function Feed() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
       const json = (await res.json()) as ClankerApiResponse
-      const incoming = json.data ?? []
+      const incoming: ClankerToken[] = json.data ?? []
 
-      setTokens(prev => append ? [...prev, ...incoming] : incoming)
+      // Fetch DexScreener in parallel
+      const dexMap = await fetchDex(incoming)
+      const dexFailed = dexMap.size === 0 && incoming.length > 0
+
+      const enriched: EnrichedToken[] = incoming.map(t => ({
+        ...t,
+        dex: dexMap.get(t.contract_address.toLowerCase()),
+        dexFailed: dexFailed,
+      }))
+
+      setTokens(prev => append ? [...prev, ...enriched] : enriched)
       setCursor(json.nextCursor)
       setLastUpdated(new Date().toLocaleTimeString())
     } catch {
@@ -271,9 +474,9 @@ export default function Feed() {
       setLoading(false)
       setLoadingMore(false)
     }
-  }, [])
+  }, [fetchDex])
 
-  // Initial load + polling
+  // Initial load + 30s polling
   useEffect(() => {
     fetchTokens()
     intervalRef.current = setInterval(() => fetchTokens(), 30_000)
@@ -282,13 +485,31 @@ export default function Feed() {
     }
   }, [fetchTokens])
 
-  const trendingTokens = [...tokens].sort(
+  // ── Volume filter ───────────────────────────────────────────────────────────
+  const visibleTokens = tokens.filter(t => {
+    const age = ageMinutes(t.created_at)
+    if (age <= 15 && (t.dex?.volH1 ?? 0) < 100) return false
+    if (hideUnverified && !isTrusted(t)) return false
+    return true
+  })
+
+  // ── Trending = sort by market cap ───────────────────────────────────────────
+  const trendingTokens = [...visibleTokens].sort(
     (a, b) => (b.related?.market?.marketCap ?? 0) - (a.related?.market?.marketCap ?? 0)
   )
 
-  const displayedTokens = activeTab === 'Trending' ? trendingTokens : tokens
+  const displayedTokens = activeTab === 'Trending' ? trendingTokens : visibleTokens
 
-  const sidebarTop5 = trendingTokens.slice(0, 5)
+  // ── Sidebar: top 5 by DexScreener vol h1 ───────────────────────────────────
+  const sidebarTop5 = [...tokens]
+    .filter(t => (t.dex?.volH1 ?? 0) > 0)
+    .sort((a, b) => (b.dex?.volH1 ?? 0) - (a.dex?.volH1 ?? 0))
+    .slice(0, 5)
+
+  const useDexSidebar = sidebarTop5.length > 0
+  const sidebarFallback = [...tokens]
+    .sort((a, b) => (b.related?.market?.marketCap ?? 0) - (a.related?.market?.marketCap ?? 0))
+    .slice(0, 5)
 
   return (
     <div className="flex min-h-screen flex-col bg-[#060a10]">
@@ -309,7 +530,6 @@ export default function Feed() {
               )}
             </div>
 
-            {/* Tab nav */}
             <nav className="mx-auto w-fit rounded-xl border border-white/[0.1] bg-white/[0.03] p-1">
               <ul className="flex gap-1" role="tablist" aria-label="Feed sections">
                 {TABS.map(tab => (
@@ -349,66 +569,82 @@ export default function Feed() {
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8">
 
             {/* Feed column */}
-            <div className="columns-1 gap-3">
-
-              {/* Briefing tab */}
-              {activeTab === 'Briefing' && <BriefingPlaceholder />}
-
-              {/* Latest / Trending tabs */}
+            <div>
+              {/* Filter bar */}
               {activeTab !== 'Briefing' && (
-                <>
-                  {loading && (
-                    <>
-                      <SkeletonCard />
-                      <SkeletonCard />
-                      <SkeletonCard />
-                    </>
+                <div className="flex items-center gap-3 mb-4">
+                  <button
+                    onClick={() => setHideUnverified(v => !v)}
+                    className={`inline-flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-1 rounded-lg border transition-colors ${
+                      hideUnverified
+                        ? 'border-amber-400/40 bg-amber-400/10 text-amber-400/80'
+                        : 'border-white/[0.1] bg-white/[0.03] text-white/30 hover:text-white/60'
+                    }`}
+                  >
+                    <span>{hideUnverified ? '✓' : '○'}</span>
+                    Hide Unverified
+                  </button>
+                  {!loading && (
+                    <span className="text-[10px] font-mono text-white/20">
+                      {displayedTokens.length} tokens
+                    </span>
                   )}
-
-                  {!loading && error && (
-                    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-8 text-center">
-                      <p className="text-white/40 text-sm mb-3">Unable to fetch launches. Retrying...</p>
-                      <button
-                        onClick={() => fetchTokens()}
-                        className="text-xs text-[#7ba5ff] hover:text-white transition-colors font-mono border border-white/[0.1] px-3 py-1.5 rounded-lg"
-                      >
-                        Retry now
-                      </button>
-                    </div>
-                  )}
-
-                  {!loading && !error && displayedTokens.map(token => (
-                    <TokenCard key={token.id} token={token} />
-                  ))}
-
-                  {/* Load more / refresh */}
-                  {!loading && !error && displayedTokens.length > 0 && activeTab !== 'Trending' && (
-                    <div className="pt-6 text-center break-inside-avoid">
-                      {loadingMore ? (
-                        <span className="text-xs text-white/20 font-mono tracking-wide">Loading...</span>
-                      ) : (
-                        <button
-                          onClick={() => fetchTokens(true, cursor)}
-                          className="text-xs text-white/20 hover:text-white/50 transition-colors font-mono tracking-wide"
-                        >
-                          load more
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {!loading && !error && activeTab === 'Trending' && (
-                    <div className="pt-6 text-center break-inside-avoid">
-                      <button
-                        onClick={() => fetchTokens()}
-                        className="text-xs text-white/20 hover:text-white/50 transition-colors font-mono tracking-wide"
-                      >
-                        ↻ refresh
-                      </button>
-                    </div>
-                  )}
-                </>
+                </div>
               )}
+
+              <div className="columns-1 gap-3">
+                {activeTab === 'Briefing' && <BriefingPlaceholder />}
+
+                {activeTab !== 'Briefing' && (
+                  <>
+                    {loading && (
+                      <>
+                        <SkeletonCard />
+                        <SkeletonCard />
+                        <SkeletonCard />
+                      </>
+                    )}
+
+                    {!loading && error && (
+                      <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-8 text-center">
+                        <p className="text-white/40 text-sm mb-3">Unable to fetch launches. Retrying...</p>
+                        <button
+                          onClick={() => fetchTokens()}
+                          className="text-xs text-[#7ba5ff] hover:text-white transition-colors font-mono border border-white/[0.1] px-3 py-1.5 rounded-lg"
+                        >
+                          Retry now
+                        </button>
+                      </div>
+                    )}
+
+                    {!loading && !error && displayedTokens.map(token => (
+                      <TokenCard key={token.id} token={token} />
+                    ))}
+
+                    {!loading && !error && displayedTokens.length > 0 && (
+                      <div className="pt-6 text-center break-inside-avoid">
+                        {activeTab === 'Trending' ? (
+                          <button
+                            onClick={() => fetchTokens()}
+                            className="text-xs text-white/20 hover:text-white/50 transition-colors font-mono tracking-wide"
+                          >
+                            ↻ refresh
+                          </button>
+                        ) : loadingMore ? (
+                          <span className="text-xs text-white/20 font-mono tracking-wide">Loading...</span>
+                        ) : (
+                          <button
+                            onClick={() => fetchTokens(true, cursor)}
+                            className="text-xs text-white/20 hover:text-white/50 transition-colors font-mono tracking-wide"
+                          >
+                            load more
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Sidebar */}
@@ -418,7 +654,7 @@ export default function Feed() {
               <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-white font-semibold text-sm tracking-wide">Trending on Base</h3>
-                  {sidebarTop5.length > 0 && (
+                  {useDexSidebar && (
                     <span className="text-[9px] font-mono text-green-400/60 flex items-center gap-1">
                       <span className="w-1 h-1 rounded-full bg-green-400 animate-pulse" />
                       live
@@ -427,30 +663,41 @@ export default function Feed() {
                 </div>
                 <div className="space-y-3.5">
                   {loading && Array.from({ length: 5 }).map((_, i) => <SidebarSkeletonRow key={i} />)}
-                  {!loading && sidebarTop5.map((t, i) => {
-                    const mc = t.related?.market?.marketCap ?? 0
-                    return (
-                      <a
-                        key={t.id}
-                        href={`https://www.clanker.world/clanker/${t.contract_address}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-3 hover:opacity-80 transition-opacity"
-                      >
-                        <span className="text-[10px] font-mono text-white/20 w-3 text-right">{i + 1}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-white/80 text-xs font-semibold truncate">${t.symbol}</div>
-                          <div className="text-white/25 text-[10px] font-mono truncate">{t.name}</div>
+                  {!loading && (useDexSidebar ? sidebarTop5 : sidebarFallback).map((t, i) => (
+                    <a
+                      key={t.id}
+                      href={`https://www.clanker.world/clanker/${t.contract_address}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+                    >
+                      <span className="text-[10px] font-mono text-white/20 w-3 text-right">{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-white/80 text-xs font-semibold truncate">${t.symbol}</div>
+                        <div className="text-white/25 text-[10px] font-mono">
+                          {useDexSidebar && t.dex
+                            ? `Vol 1h: ${fmtVol(t.dex.volH1)}`
+                            : fmtMc(t.related?.market?.marketCap ?? 0)}
                         </div>
-                        <div className="text-right flex-shrink-0">
-                          <div className="text-xs font-mono text-[#7ba5ff]">{mc > 0 ? fmtMarketCap(mc) : '—'}</div>
-                          <div className="text-white/25 text-[10px] font-mono">{timeAgo(t.created_at)}</div>
-                        </div>
-                      </a>
-                    )
-                  })}
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        {useDexSidebar && t.dex ? (
+                          <div className={`text-xs font-mono ${t.dex.changeH1 >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {t.dex.changeH1 >= 0 ? '+' : ''}{t.dex.changeH1.toFixed(1)}%
+                          </div>
+                        ) : (
+                          <div className="text-xs font-mono text-[#7ba5ff]">
+                            {fmtMc(t.related?.market?.marketCap ?? 0)}
+                          </div>
+                        )}
+                        <div className="text-white/25 text-[10px] font-mono">{timeAgo(t.created_at)}</div>
+                      </div>
+                    </a>
+                  ))}
                 </div>
-                <p className="mt-4 text-[10px] text-white/20 font-mono">via Clanker API</p>
+                <p className="mt-4 text-[10px] text-white/20 font-mono">
+                  {useDexSidebar ? 'via DexScreener' : 'via Clanker API'}
+                </p>
               </div>
 
               {/* Launch CTA */}
