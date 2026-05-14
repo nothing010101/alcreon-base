@@ -1,7 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Nav from '../components/Nav'
 import Footer from '../components/Footer'
-import { editorials, CATEGORIES, type Category } from '../data/editorials'
+import { fetchEditorials, formatDateUTC, type Editorial } from '../lib/notion'
+
+const CATEGORIES = ['All', 'Playbook', 'Analysis', 'Data', 'Deep Dive'] as const
+type Category = typeof CATEGORIES[number]
 
 function Avatar({ initials }: { initials: string }) {
   return (
@@ -11,12 +14,66 @@ function Avatar({ initials }: { initials: string }) {
   )
 }
 
+function SkeletonCard() {
+  return (
+    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-6 animate-pulse">
+      <div className="h-3 w-16 rounded bg-white/[0.06] mb-4" />
+      <div className="space-y-2 mb-4">
+        <div className="h-4 w-full rounded bg-white/[0.06]" />
+        <div className="h-4 w-4/5 rounded bg-white/[0.05]" />
+      </div>
+      <div className="space-y-1.5 mb-5">
+        <div className="h-3 w-full rounded bg-white/[0.04]" />
+        <div className="h-3 w-3/4 rounded bg-white/[0.04]" />
+      </div>
+      <div className="flex items-center gap-2 pt-4 border-t border-white/[0.06]">
+        <div className="w-7 h-7 rounded-full bg-white/[0.06]" />
+        <div className="space-y-1">
+          <div className="h-2.5 w-16 rounded bg-white/[0.06]" />
+          <div className="h-2.5 w-24 rounded bg-white/[0.04]" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FeaturedSkeleton() {
+  return (
+    <div className="mb-12 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-8 md:p-10 animate-pulse">
+      <div className="flex gap-3 mb-5">
+        <div className="h-6 w-20 rounded-full bg-white/[0.06]" />
+        <div className="h-6 w-16 rounded-full bg-white/[0.04]" />
+      </div>
+      <div className="space-y-3 mb-4">
+        <div className="h-7 w-3/4 rounded bg-white/[0.06]" />
+        <div className="h-7 w-1/2 rounded bg-white/[0.05]" />
+      </div>
+      <div className="space-y-2 mb-6">
+        <div className="h-4 w-full rounded bg-white/[0.04]" />
+        <div className="h-4 w-5/6 rounded bg-white/[0.04]" />
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="w-7 h-7 rounded-full bg-white/[0.06]" />
+        <div className="h-3 w-32 rounded bg-white/[0.06]" />
+      </div>
+    </div>
+  )
+}
+
 export default function Editorials() {
+  const [editorials, setEditorials] = useState<Editorial[]>([])
+  const [loading, setLoading] = useState(true)
   const [activeCategory, setActiveCategory] = useState<Category>('All')
+
+  useEffect(() => {
+    fetchEditorials()
+      .then(setEditorials)
+      .finally(() => setLoading(false))
+  }, [])
 
   const filtered = activeCategory === 'All'
     ? editorials
-    : editorials.filter(e => e.category === activeCategory)
+    : editorials.filter(e => e.category === activeCategory || e.tag === activeCategory)
 
   const featured = editorials.find(e => e.featured)
   const rest = filtered.filter(e => !e.featured)
@@ -26,7 +83,6 @@ export default function Editorials() {
       <a href="#main-content" className="skip-link">Skip to main content</a>
       <Nav />
       <main id="main-content" className="flex-1 overflow-x-clip">
-        {/* Page header — matches original exactly */}
         <header className="pb-16 pt-24 text-center">
           <h1 className="font-bold text-white leading-[1] tracking-[-0.02em]"
             style={{ fontSize: 'clamp(2.5rem,5vw,3.5rem)' }}>
@@ -38,7 +94,6 @@ export default function Editorials() {
         </header>
 
         <div className="mx-auto max-w-7xl px-4 sm:px-6 pb-8">
-          {/* Category tab nav */}
           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-center gap-4 mb-12">
             <div className="hidden md:block" />
             <nav className="mx-auto w-fit rounded-xl border border-white/[0.1] bg-white/[0.04] p-1">
@@ -67,8 +122,9 @@ export default function Editorials() {
         </div>
 
         <div className="mx-auto max-w-7xl px-4 sm:px-6 pb-20">
-          {/* Featured editorial */}
-          {featured && activeCategory === 'All' && (
+          {/* Featured */}
+          {loading && <FeaturedSkeleton />}
+          {!loading && featured && activeCategory === 'All' && (
             <article className="group mb-12 rounded-2xl border border-white/[0.07] bg-white/[0.02] hover:border-white/15 transition-all overflow-hidden">
               <div className="p-8 md:p-10">
                 <div className="flex items-center gap-3 mb-5">
@@ -86,11 +142,11 @@ export default function Editorials() {
                 <p className="text-white/50 text-base leading-relaxed mb-6 max-w-2xl">
                   {featured.excerpt}
                 </p>
-                <div className="flex items-center gap-3">
-                  <Avatar initials={featured.avatar} />
+                <div className="flex items-center gap-3 flex-wrap">
+                  <Avatar initials={featured.author.substring(0, 2).toUpperCase()} />
                   <span className="text-white/60 text-sm">{featured.author}</span>
                   <span className="text-white/20 text-xs">·</span>
-                  <span className="label-mono">{featured.date}</span>
+                  <span className="label-mono">{formatDateUTC(featured.publishAt)}</span>
                   <span className="text-white/20 text-xs">·</span>
                   <span className="label-mono">{featured.readTime} read</span>
                 </div>
@@ -100,8 +156,9 @@ export default function Editorials() {
 
           {/* Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {rest.map(editorial => (
-              <article key={editorial.slug}
+            {loading && Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+            {!loading && rest.map(editorial => (
+              <article key={editorial.id}
                 className="group rounded-2xl border border-white/[0.07] bg-white/[0.02] hover:border-white/15 transition-all p-6 flex flex-col">
                 <div className="flex items-center gap-2 mb-4">
                   <span className="text-[10px] font-mono uppercase tracking-widest text-white/40 bg-white/[0.05] px-2.5 py-1 rounded-full">
@@ -115,17 +172,17 @@ export default function Editorials() {
                   {editorial.excerpt}
                 </p>
                 <div className="flex items-center gap-2 pt-4 border-t border-white/[0.06]">
-                  <Avatar initials={editorial.avatar} />
+                  <Avatar initials={editorial.author.substring(0, 2).toUpperCase()} />
                   <div className="flex-1 min-w-0">
                     <div className="text-white/60 text-xs">{editorial.author}</div>
-                    <div className="label-mono">{editorial.date} · {editorial.readTime}</div>
+                    <div className="label-mono">{formatDateUTC(editorial.publishAt)} · {editorial.readTime}</div>
                   </div>
                 </div>
               </article>
             ))}
           </div>
 
-          {filtered.length === 0 && (
+          {!loading && filtered.length === 0 && (
             <div className="text-center py-20 text-white/30 font-body">
               No editorials in this category yet.
             </div>
