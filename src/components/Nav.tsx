@@ -20,7 +20,29 @@ const SOCIAL_LINKS = [
       </svg>
     ),
   },
-];
+]
+
+const ALCREON_CA = '0x0000000000000000000'
+const BUY_HREF = 'https://clanker.world'
+
+function BuyButton() {
+  return (
+    <div className='flex flex-col items-end gap-0.5'>
+      <a
+        href={BUY_HREF}
+        target='_blank'
+        rel='noopener noreferrer'
+        className='inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-[0.75rem] font-semibold tracking-wide text-[#060a10] transition-opacity hover:opacity-85 active:opacity-70'
+      >
+        <svg width='11' height='11' viewBox='0 0 24 24' fill='none' aria-hidden='true'>
+          <path d='M13 7h8m0 0v8m0-8l-8 8-4-4-6 6' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'/>
+        </svg>
+        BUY ALCREON
+      </a>
+      <span className='font-mono text-[9px] tracking-widest text-white/25 select-all pr-0.5'>{ALCREON_CA}</span>
+    </div>
+  )
+}
 
 export default function Nav() {
   const [scrolled, setScrolled] = useState(false)
@@ -57,13 +79,14 @@ export default function Nav() {
             ))}
           </nav>
           <div className='flex items-center gap-2 justify-self-end'>
-            <div className='hidden items-center gap-1 sm:flex'>
+            <div className='hidden items-center gap-2 sm:flex'>
               {SOCIAL_LINKS.map(s => (
                 <a key={s.label} href={s.href} target='_blank' rel='noopener noreferrer' aria-label={s.label}
                   className='inline-flex h-9 w-9 items-center justify-center rounded-lg text-white/40 hover:text-white transition-colors'>
                   {s.icon}
                 </a>
               ))}
+              <BuyButton />
             </div>
             <MobileMenuBtn open={mobileOpen} onClick={() => setMobileOpen(!mobileOpen)} />
           </div>
@@ -88,13 +111,14 @@ export default function Nav() {
           ))}
         </nav>
         <div className='flex items-center gap-2 justify-self-end'>
-          <div className='hidden items-center gap-1 sm:flex'>
+          <div className='hidden items-center gap-2 sm:flex'>
             {SOCIAL_LINKS.map(s => (
               <a key={s.label} href={s.href} target='_blank' rel='noopener noreferrer' aria-label={s.label}
                 className='inline-flex h-9 w-9 items-center justify-center rounded-lg text-white/40 hover:text-white transition-colors'>
                 {s.icon}
               </a>
             ))}
+            <BuyButton />
           </div>
           <MobileMenuBtn open={mobileOpen} onClick={() => setMobileOpen(!mobileOpen)} />
         </div>
@@ -141,13 +165,27 @@ function MobileMenu({ links, onClose }: { links: { label: string; href: string }
             {l.label}
           </Link>
         ))}
-        <div className='pt-3 mt-2 border-t border-white/[0.06] flex items-center justify-center gap-4'>
-          {SOCIAL_LINKS.map(s => (
-            <a key={s.label} href={s.href} target='_blank' rel='noopener noreferrer' aria-label={s.label}
-              className='inline-flex h-10 w-10 items-center justify-center rounded-lg text-white/40 hover:text-white transition-colors'>
-              {s.icon}
-            </a>
-          ))}
+        <div className='pt-3 mt-2 border-t border-white/[0.06] flex flex-col items-center gap-2'>
+          <div className='flex items-center gap-3'>
+            {SOCIAL_LINKS.map(s => (
+              <a key={s.label} href={s.href} target='_blank' rel='noopener noreferrer' aria-label={s.label}
+                className='inline-flex h-10 w-10 items-center justify-center rounded-lg text-white/40 hover:text-white transition-colors'>
+                {s.icon}
+              </a>
+            ))}
+          </div>
+          <a
+            href={BUY_HREF}
+            target='_blank'
+            rel='noopener noreferrer'
+            className='w-full flex items-center justify-center gap-1.5 rounded-lg bg-white px-4 py-2.5 text-[0.8125rem] font-semibold tracking-wide text-[#060a10] transition-opacity hover:opacity-85'
+          >
+            <svg width='12' height='12' viewBox='0 0 24 24' fill='none' aria-hidden='true'>
+              <path d='M13 7h8m0 0v8m0-8l-8 8-4-4-6 6' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'/>
+            </svg>
+            BUY ALCREON
+          </a>
+          <span className='font-mono text-[9px] tracking-widest text-white/25 select-all'>{ALCREON_CA}</span>
         </div>
       </div>
     </div>
