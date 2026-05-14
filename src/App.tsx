@@ -2,7 +2,6 @@ import { Routes, Route } from 'react-router-dom'
 import Home from './pages/Home'
 import Feed from './pages/Feed'
 import Editorials from './pages/Editorials'
-import SignIn from './pages/SignIn'
 
 export default function App() {
   return (
@@ -10,7 +9,6 @@ export default function App() {
       <Route path="/" element={<Home />} />
       <Route path="/feed" element={<Feed />} />
       <Route path="/editorials" element={<Editorials />} />
-      <Route path="/sign-in" element={<SignIn />} />
     </Routes>
   )
 }
