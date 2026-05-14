@@ -10,6 +10,16 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/clanker/, '/api'),
       },
+      '/api/dexscreener': {
+        target: 'https://api.dexscreener.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/dexscreener/, ''),
+      },
+      '/api/basescan': {
+        target: 'https://api.basescan.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/basescan/, ''),
+      },
     },
   },
 })
