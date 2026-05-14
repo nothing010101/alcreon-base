@@ -1,19 +1,53 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import Nav from '../components/Nav'
 import Footer from '../components/Footer'
-import { streamPosts, briefingPosts, launchPosts, type FeedPost } from '../data/feedPosts'
 
-const TABS = ['Stream', 'Briefing', 'Launches'] as const
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface ClankerMarket {
+  marketCap: number
+  price: number
+}
+
+interface ClankerUser {
+  username?: string
+  display_name?: string
+  pfp_url?: string
+}
+
+interface ClankerRelated {
+  market?: ClankerMarket
+  user?: ClankerUser
+}
+
+interface ClankerToken {
+  id: number
+  name: string
+  symbol: string
+  img_url: string | null
+  contract_address: string
+  created_at: string
+  requestor_fid: number
+  type: string
+  pair: string | null
+  related?: ClankerRelated
+}
+
+interface ClankerApiResponse {
+  data: ClankerToken[]
+  nextCursor?: string
+}
+
+const AVATAR_COLORS = ['#2151f5', '#7c3aed', '#0891b2', '#059669', '#d97706', '#dc2626', '#db2777']
+
+const TABS = ['Latest', 'Briefing', 'Trending'] as const
 type Tab = typeof TABS[number]
 
-const FARCASTER_EPOCH = 1609459200
-const HUB = 'https://hub.pinata.cloud'
-const CHANNELS = ['base', 'degen', 'higher', 'clanker', 'onchain', 'crypto']
-const AVATAR_COLORS = ['#2151f5', '#7c3aed', '#0891b2', '#059669', '#d97706', '#dc2626']
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function timeAgo(isoTs: string): string {
-  const diff = Date.now() - new Date(isoTs).getTime()
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
   const m = Math.floor(diff / 60000)
   if (m < 1) return 'just now'
   if (m < 60) return `${m}m`
@@ -22,85 +56,150 @@ function timeAgo(isoTs: string): string {
   return `${Math.floor(h / 24)}d`
 }
 
-function extractTag(text: string): string | undefined {
-  const lower = text.toLowerCase()
-  if (lower.includes('launch') || lower.includes('token')) return 'Token'
-  if (lower.includes('base chain') || lower.includes('onbase')) return 'Base'
-  if (lower.includes('defi') || lower.includes('yield')) return 'DeFi'
-  if (lower.includes('nft')) return 'NFT'
-  if (lower.includes('ai') || lower.includes('artificial intelligence')) return 'AI'
-  return undefined
+function fmtMarketCap(v: number): string {
+  if (v >= 1_000_000_000) return `$${(v / 1_000_000_000).toFixed(1)}B`
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`
+  if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`
+  return `$${v.toFixed(2)}`
 }
 
-interface HubMessage {
-  data: {
-    fid: number
-    timestamp: number
-    castAddBody: { text: string; embeds: { url?: string }[] }
-  }
-  hash: string
+function fmtPrice(v: number): string {
+  if (v >= 1) return `$${v.toFixed(2)}`
+  if (v >= 0.001) return `$${v.toFixed(4)}`
+  return `$${v.toExponential(2)}`
 }
 
-interface LivePost {
-  id: string
-  author: { name: string; handle: string; initials: string; color: string; verified: boolean }
-  content: string
-  timestamp: string
-  likes: number
-  reposts: number
-  comments: number
-  tag?: string
-  url: string
-  source: 'farcaster'
+function typeLabel(t: string): string {
+  if (t.includes('v4')) return 'v4'
+  if (t.includes('v3')) return 'v3'
+  return t.replace('clanker_', '')
 }
 
-interface GeckoPool {
-  attributes: {
-    name: string
-    base_token_price_usd: string
-    volume_usd: { h24: string }
-    price_change_percentage: { h24: string }
-    transactions: { h24: { buys: number; sells: number } }
-  }
+function avatarColor(id: number): string {
+  return AVATAR_COLORS[id % AVATAR_COLORS.length]
 }
 
-interface TrendingToken {
-  symbol: string
-  change: string
-  vol: string
-  buys: number
+function initials(name: string): string {
+  return name.substring(0, 2).toUpperCase()
 }
 
-function LivePostCard({ post }: { post: LivePost }) {
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+
+function SkeletonCard() {
   return (
-    <div className="relative mb-3 break-inside-avoid">
-      <a href={post.url} target="_blank" rel="noopener noreferrer"
-        className="block rounded-2xl border border-white/[0.07] bg-white/[0.02] hover:border-white/[0.12] hover:bg-white/[0.03] transition-all p-4 cursor-pointer">
-        <div className="flex gap-3">
-          <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-white text-xs flex-shrink-0 select-none"
-            style={{ backgroundColor: post.author.color }}>
-            {post.author.initials}
+    <div className="mb-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 animate-pulse">
+      <div className="flex gap-3">
+        <div className="w-10 h-10 rounded-xl bg-white/[0.06] flex-shrink-0" />
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="flex gap-2">
+            <div className="h-3.5 w-24 rounded bg-white/[0.06]" />
+            <div className="h-3.5 w-12 rounded bg-white/[0.04]" />
+            <div className="h-3.5 w-10 rounded bg-white/[0.04] ml-auto" />
           </div>
+          <div className="h-3 w-32 rounded bg-white/[0.04]" />
+          <div className="flex gap-2 mt-2">
+            <div className="h-5 w-14 rounded-full bg-white/[0.04]" />
+            <div className="h-5 w-10 rounded-full bg-white/[0.04]" />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SidebarSkeletonRow() {
+  return (
+    <div className="flex items-center gap-3 animate-pulse">
+      <div className="h-3 w-3 rounded bg-white/[0.06]" />
+      <div className="flex-1 space-y-1">
+        <div className="h-3 w-20 rounded bg-white/[0.06]" />
+        <div className="h-2.5 w-14 rounded bg-white/[0.04]" />
+      </div>
+      <div className="text-right space-y-1">
+        <div className="h-3 w-10 rounded bg-white/[0.06]" />
+        <div className="h-2.5 w-8 rounded bg-white/[0.04]" />
+      </div>
+    </div>
+  )
+}
+
+// ─── Token Card ───────────────────────────────────────────────────────────────
+
+function TokenCard({ token }: { token: ClankerToken }) {
+  const mc = token.related?.market?.marketCap ?? 0
+  const price = token.related?.market?.price ?? 0
+  const deployer = token.related?.user?.display_name || token.related?.user?.username
+  const pfp = token.related?.user?.pfp_url
+
+  return (
+    <div className="mb-3 break-inside-avoid">
+      <a
+        href={`https://www.clanker.world/token/${token.contract_address}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block rounded-2xl border border-white/[0.07] bg-white/[0.02] hover:border-white/[0.12] hover:bg-white/[0.03] transition-all p-4 cursor-pointer"
+      >
+        <div className="flex gap-3">
+          {/* Token image / avatar */}
+          {token.img_url ? (
+            <img
+              src={token.img_url}
+              alt={token.name}
+              className="w-10 h-10 rounded-xl object-cover flex-shrink-0 bg-white/[0.04]"
+              onError={(e) => {
+                const target = e.currentTarget
+                target.style.display = 'none'
+                const sibling = target.nextElementSibling as HTMLElement | null
+                if (sibling) sibling.style.display = 'flex'
+              }}
+            />
+          ) : null}
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white text-xs flex-shrink-0 select-none"
+            style={{ backgroundColor: avatarColor(token.id), display: token.img_url ? 'none' : 'flex' }}
+          >
+            {initials(token.name)}
+          </div>
+
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
-              <span className="font-bold text-white text-[0.8125rem] leading-none">{post.author.name}</span>
-              <span className="text-white/30 text-xs">@{post.author.handle}</span>
-              <span className="text-white/20 text-[10px]">·</span>
-              <span className="text-white/30 text-xs">{post.timestamp}</span>
-              {post.tag && (
-                <span className="ml-auto text-[9px] font-mono uppercase tracking-widest text-white/40 bg-white/[0.06] border border-white/10 px-1.5 py-0.5 rounded-full">
-                  {post.tag}
+            {/* Header row */}
+            <div className="flex items-center gap-1.5 flex-wrap mb-1">
+              <span className="font-bold text-white text-[0.8125rem] leading-none truncate">{token.name}</span>
+              <span className="text-white/40 text-xs font-mono">${token.symbol}</span>
+              <span className="ml-auto text-white/25 text-[10px] font-mono flex-shrink-0">{timeAgo(token.created_at)}</span>
+            </div>
+
+            {/* Market cap + price */}
+            <div className="flex items-center gap-3 mb-2">
+              {mc > 0 && (
+                <span className="text-white/70 text-xs font-mono">
+                  <span className="text-white/30 text-[10px] mr-0.5">mcap</span>
+                  {fmtMarketCap(mc)}
                 </span>
               )}
+              {price > 0 && (
+                <span className="text-white/40 text-[10px] font-mono">{fmtPrice(price)}</span>
+              )}
             </div>
-            <p className="text-white/75 text-[0.8125rem] leading-relaxed whitespace-pre-line line-clamp-6">{post.content}</p>
-            <div className="flex items-center gap-2 mt-3">
-              <span className="text-[10px] font-mono text-white/20 flex items-center gap-1">
-                <svg className="w-3 h-3" viewBox="0 0 1000 1000" fill="currentColor">
-                  <path d="M257.778 155.556h484.444v688.889h-71.111v-244.445h-0.697c-7.056-85.189-78.308-151.111-165.414-151.111-87.107 0-158.359 65.922-165.414 151.111h-0.697v244.445h-81.111V155.556zM128.889 253.333l42.222 177.778h35.556V688.89h71.111V431.111h26.667V253.333H128.889zM771.111 253.333v177.778h26.667V688.89h71.111V431.111h35.556l42.222-177.778H771.111z" />
-                </svg>
-                Open on Warpcast
+
+            {/* Badges + deployer */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {token.pair && (
+                <span className="text-[9px] font-mono uppercase tracking-widest text-white/40 bg-white/[0.06] border border-white/10 px-1.5 py-0.5 rounded-full">
+                  {token.pair}
+                </span>
+              )}
+              <span className="text-[9px] font-mono uppercase tracking-widest text-[#7ba5ff]/60 bg-[#2151f5]/10 border border-[#2151f5]/20 px-1.5 py-0.5 rounded-full">
+                {typeLabel(token.type)}
               </span>
+              {deployer && (
+                <span className="ml-auto flex items-center gap-1 text-[10px] text-white/25">
+                  {pfp && (
+                    <img src={pfp} alt={deployer} className="w-3.5 h-3.5 rounded-full object-cover" />
+                  )}
+                  {deployer}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -109,197 +208,87 @@ function LivePostCard({ post }: { post: LivePost }) {
   )
 }
 
-function StaticPostCard({ post }: { post: FeedPost }) {
+// ─── Briefing placeholder ─────────────────────────────────────────────────────
+
+function BriefingPlaceholder() {
+  const items = [
+    { tag: 'Daily Briefing', title: 'Base Briefing — May 14', body: 'Top clanker launches, holder stats, and market signals from the last 24 hours. Updated every morning.' },
+    { tag: 'Signal', title: 'Holder retention at all-time high', body: '30-day retention on Base tokens: 61%. Six months ago this was 19%. Something has changed.' },
+    { tag: 'Weekly Wrap', title: 'Weekly wrap — May 13', body: 'The editorial on fee architecture hit 47K reads. $CLANK: 12K holders, $0 marketing. Full breakdown Monday.' },
+  ]
   return (
-    <div className="relative mb-3 break-inside-avoid">
-      <div className="absolute bottom-3 right-3 z-10 flex gap-1">
-        <button type="button" aria-label="Upvote"
-          className="inline-flex items-center rounded-full border backdrop-blur-sm transition-colors h-7 w-7 justify-center border-white/20 bg-[#060a10]/85 text-white/50 hover:text-white hover:border-white/40">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M7 10v12" /><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" />
-          </svg>
-        </button>
-      </div>
-      <div className="block rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
-        <div className="flex gap-3">
-          <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-white text-xs flex-shrink-0 select-none" style={{ backgroundColor: post.author.color }}>
-            {post.author.initials}
-          </div>
-          <div className="flex-1 min-w-0 pr-16">
-            <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
-              <span className="font-bold text-white text-[0.8125rem] leading-none">{post.author.name}</span>
-              {post.author.verified && (
-                <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor" style={{ color: post.author.color }}>
-                  <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-              )}
-              <span className="text-white/30 text-xs">@{post.author.handle}</span>
-              <span className="text-white/20 text-[10px]">·</span>
-              <span className="text-white/30 text-xs">{post.timestamp}</span>
-              {post.tag && (
-                <span className="ml-auto text-[9px] font-mono uppercase tracking-widest text-white/40 bg-white/[0.06] border border-white/10 px-1.5 py-0.5 rounded-full">{post.tag}</span>
-              )}
-            </div>
-            <p className="text-white/75 text-[0.8125rem] leading-relaxed whitespace-pre-line">{post.content}</p>
-            <div className="flex items-center gap-5 text-white/25 mt-3">
-              <span className="flex items-center gap-1.5 text-xs">
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-                {post.comments}
-              </span>
-              <span className="flex items-center gap-1.5 text-xs">
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M17 1l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><path d="M7 23l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
-                </svg>
-                {post.reposts}
-              </span>
-              <span className="flex items-center gap-1.5 text-xs">
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                </svg>
-                {post.likes >= 1000 ? `${(post.likes / 1000).toFixed(post.likes >= 10000 ? 0 : 1)}K` : post.likes}
-              </span>
-            </div>
-          </div>
+    <div className="space-y-3">
+      {items.map((item, i) => (
+        <div key={i} className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
+          <span className="text-[9px] font-mono uppercase tracking-widest text-white/30">{item.tag}</span>
+          <h3 className="text-white font-semibold text-sm mt-1 mb-1.5">{item.title}</h3>
+          <p className="text-white/45 text-xs leading-relaxed">{item.body}</p>
         </div>
-      </div>
+      ))}
+      <p className="text-center text-white/20 text-xs font-mono pt-2">Editorial briefings coming soon</p>
     </div>
   )
 }
 
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export default function Feed() {
-  const [activeTab, setActiveTab] = useState<Tab>('Stream')
-  const [livePosts, setLivePosts] = useState<LivePost[]>([])
-  const [loadingPosts, setLoadingPosts] = useState(false)
-  const [trendingTokens, setTrendingTokens] = useState<TrendingToken[]>([])
+  const [activeTab, setActiveTab] = useState<Tab>('Latest')
+  const [tokens, setTokens] = useState<ClankerToken[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const [cursor, setCursor] = useState<string | undefined>()
+  const [loadingMore, setLoadingMore] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<string>('')
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const fetchFarcasterFeed = useCallback(async () => {
-    setLoadingPosts(true)
+  const fetchTokens = useCallback(async (append = false, currentCursor?: string) => {
+    if (append) setLoadingMore(true)
+    else setLoading(true)
+    setError(false)
+
     try {
-      const results = await Promise.allSettled(
-        CHANNELS.map(ch =>
-          fetch(`${HUB}/v1/castsByParent?url=https://warpcast.com/~/channel/${ch}&pageSize=20`)
-            .then(r => r.json())
-        )
-      )
-
-      const allCasts: HubMessage[] = results.flatMap(r =>
-        r.status === 'fulfilled' ? (r.value.messages || []) : []
-      )
-
-      allCasts.sort((a, b) => b.data.timestamp - a.data.timestamp)
-
-      const seen = new Set<string>()
-      const unique = allCasts.filter(c => {
-        if (seen.has(c.hash)) return false
-        seen.add(c.hash)
-        return c.data.castAddBody?.text?.length > 10
-      }).slice(0, 40)
-
-      const fidSet = new Set(unique.map(c => c.data.fid))
-      const userMap = new Map<number, { username: string; displayName: string }>()
-
-      await Promise.allSettled(
-        Array.from(fidSet).map(async fid => {
-          try {
-            const [uRes, dRes] = await Promise.all([
-              fetch(`${HUB}/v1/userDataByFid?fid=${fid}&user_data_type=USER_DATA_TYPE_USERNAME`).then(r => r.json()),
-              fetch(`${HUB}/v1/userDataByFid?fid=${fid}&user_data_type=USER_DATA_TYPE_DISPLAY`).then(r => r.json()),
-            ])
-            userMap.set(fid, {
-              username: uRes.data?.userDataBody?.value || `fid${fid}`,
-              displayName: dRes.data?.userDataBody?.value || uRes.data?.userDataBody?.value || `User ${fid}`,
-            })
-          } catch {
-            userMap.set(fid, { username: `fid${fid}`, displayName: `User ${fid}` })
-          }
-        })
-      )
-
-      const mapped: LivePost[] = unique.map(cast => {
-        const fid = cast.data.fid
-        const user = userMap.get(fid) || { username: `fid${fid}`, displayName: `User ${fid}` }
-        const tsMs = (cast.data.timestamp + FARCASTER_EPOCH) * 1000
-        const name = user.displayName
-        return {
-          id: cast.hash,
-          author: {
-            name,
-            handle: user.username,
-            initials: name.substring(0, 2).toUpperCase(),
-            color: AVATAR_COLORS[fid % AVATAR_COLORS.length],
-            verified: false,
-          },
-          content: cast.data.castAddBody.text,
-          timestamp: timeAgo(new Date(tsMs).toISOString()),
-          likes: 0,
-          reposts: 0,
-          comments: 0,
-          tag: extractTag(cast.data.castAddBody.text),
-          url: `https://warpcast.com/~/cast/${cast.hash}`,
-          source: 'farcaster',
-        }
+      const params = new URLSearchParams({
+        sort: 'desc',
+        limit: '20',
+        includeMarket: 'true',
+        includeUser: 'true',
       })
+      if (append && currentCursor) params.set('cursor', currentCursor)
 
-      setLivePosts(mapped)
+      const res = await fetch(`https://www.clanker.world/api/tokens?${params.toString()}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+      const json = (await res.json()) as ClankerApiResponse
+      const incoming = json.data ?? []
+
+      setTokens(prev => append ? [...prev, ...incoming] : incoming)
+      setCursor(json.nextCursor)
       setLastUpdated(new Date().toLocaleTimeString())
     } catch {
-      // silent fail, keep existing posts
+      if (!append) setError(true)
     } finally {
-      setLoadingPosts(false)
+      setLoading(false)
+      setLoadingMore(false)
     }
   }, [])
 
-  const fetchTrendingTokens = useCallback(async () => {
-    try {
-      const res = await fetch('https://api.geckoterminal.com/api/v2/networks/base/trending_pools?page=1', {
-        headers: { accept: 'application/json;version=20230302' },
-      })
-      if (!res.ok) return
-      const data = await res.json() as { data: GeckoPool[] }
-      const pools = data.data || []
-      const mapped: TrendingToken[] = pools.slice(0, 5).map((p) => {
-        const name = p.attributes.name.split('/')[0].trim()
-        const change = parseFloat(p.attributes.price_change_percentage?.h24 || '0')
-        const vol = parseFloat(p.attributes.volume_usd?.h24 || '0')
-        return {
-          symbol: name.length > 10 ? name.substring(0, 10) : name,
-          change: `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`,
-          vol: vol >= 1000000 ? `$${(vol / 1000000).toFixed(1)}M` : vol >= 1000 ? `$${(vol / 1000).toFixed(0)}K` : `$${vol.toFixed(0)}`,
-          buys: p.attributes.transactions?.h24?.buys || 0,
-        }
-      })
-      setTrendingTokens(mapped)
-    } catch {
-      // use fallback
-    }
-  }, [])
-
+  // Initial load + polling
   useEffect(() => {
-    fetchFarcasterFeed()
-    fetchTrendingTokens()
-    const interval = setInterval(() => {
-      fetchFarcasterFeed()
-      fetchTrendingTokens()
-    }, 60000)
-    return () => clearInterval(interval)
-  }, [fetchFarcasterFeed, fetchTrendingTokens])
+    fetchTokens()
+    intervalRef.current = setInterval(() => fetchTokens(), 30_000)
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+    }
+  }, [fetchTokens])
 
-  const staticPosts =
-    activeTab === 'Briefing' ? briefingPosts :
-    activeTab === 'Launches' ? launchPosts :
-    streamPosts
+  const trendingTokens = [...tokens].sort(
+    (a, b) => (b.related?.market?.marketCap ?? 0) - (a.related?.market?.marketCap ?? 0)
+  )
 
-  const showLive = activeTab === 'Stream' && livePosts.length > 0
+  const displayedTokens = activeTab === 'Trending' ? trendingTokens : tokens
 
-  const fallbackTokens = [
-    { symbol: 'HIGHER', change: '+847%', vol: '$4.2M', buys: 203 },
-    { symbol: 'DEGEN', change: '+24%', vol: '$12.1M', buys: 890 },
-    { symbol: 'ENJOY', change: '+112%', vol: '$2.8M', buys: 312 },
-    { symbol: 'NOUN', change: '+67%', vol: '$1.9M', buys: 145 },
-    { symbol: 'BASED', change: '+34%', vol: '$3.4M', buys: 267 },
-  ]
-  const tokens = trendingTokens.length > 0 ? trendingTokens : fallbackTokens
+  const sidebarTop5 = trendingTokens.slice(0, 5)
 
   return (
     <div className="flex min-h-screen flex-col bg-[#060a10]">
@@ -308,9 +297,10 @@ export default function Feed() {
       <main id="main-content" className="flex-1 overflow-x-clip">
         <section className="mx-auto max-w-7xl px-4 sm:px-6 pt-12 pb-20">
 
+          {/* Header row */}
           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-center gap-4 mb-10">
             <div className="hidden md:flex md:items-center gap-2">
-              <p className="text-[10px] font-mono uppercase tracking-widest text-white/25">Base chain intelligence</p>
+              <p className="text-[10px] font-mono uppercase tracking-widest text-white/25">Clanker token launches</p>
               {lastUpdated && (
                 <span className="inline-flex items-center gap-1 text-[9px] font-mono text-green-400/60">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
@@ -318,94 +308,166 @@ export default function Feed() {
                 </span>
               )}
             </div>
+
+            {/* Tab nav */}
             <nav className="mx-auto w-fit rounded-xl border border-white/[0.1] bg-white/[0.03] p-1">
               <ul className="flex gap-1" role="tablist" aria-label="Feed sections">
                 {TABS.map(tab => (
                   <li key={tab} className="relative" role="presentation">
                     {activeTab === tab && <div className="absolute inset-0 rounded-lg bg-[#2151f5]/15" />}
-                    <button role="tab" aria-selected={activeTab === tab} onClick={() => setActiveTab(tab)}
+                    <button
+                      role="tab"
+                      aria-selected={activeTab === tab}
+                      onClick={() => setActiveTab(tab)}
                       className={`relative z-[1] min-h-[44px] cursor-pointer rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
                         activeTab === tab ? 'text-[#7ba5ff]' : 'text-white/40 hover:text-white/80'
-                      }`}>
+                      }`}
+                    >
                       {tab}
-                      {tab === 'Stream' && <span className="ml-1.5 inline-flex w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />}
+                      {tab === 'Latest' && (
+                        <span className="ml-1.5 inline-flex w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                      )}
                     </button>
                   </li>
                 ))}
               </ul>
             </nav>
+
             <div className="hidden md:flex md:items-center md:justify-end">
-              <a href="https://clanker.world" target="_blank" rel="noopener noreferrer"
-                className="text-sm text-white/30 hover:text-white transition-colors font-medium">
+              <a
+                href="https://clanker.world"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-white/30 hover:text-white transition-colors font-medium"
+              >
                 Launch token →
               </a>
             </div>
           </div>
 
+          {/* Main grid */}
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-8">
+
+            {/* Feed column */}
             <div className="columns-1 gap-3">
-              {loadingPosts && livePosts.length === 0 && (
-                <div className="flex items-center justify-center py-10 gap-2 text-white/30 text-sm font-mono">
-                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                  </svg>
-                  Loading Farcaster…
-                </div>
-              )}
-              {showLive
-                ? livePosts.map((p) => <LivePostCard key={p.id} post={p} />)
-                : !loadingPosts && staticPosts.map(p => <StaticPostCard key={p.id} post={p} />)
-              }
-              {!loadingPosts && (
-                <div className="pt-6 text-center break-inside-avoid">
-                  <button onClick={() => { fetchFarcasterFeed(); fetchTrendingTokens() }}
-                    className="text-xs text-white/20 hover:text-white/50 transition-colors font-mono tracking-wide">
-                    {showLive ? '↻ refresh' : 'load more'}
-                  </button>
-                </div>
+
+              {/* Briefing tab */}
+              {activeTab === 'Briefing' && <BriefingPlaceholder />}
+
+              {/* Latest / Trending tabs */}
+              {activeTab !== 'Briefing' && (
+                <>
+                  {loading && (
+                    <>
+                      <SkeletonCard />
+                      <SkeletonCard />
+                      <SkeletonCard />
+                    </>
+                  )}
+
+                  {!loading && error && (
+                    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-8 text-center">
+                      <p className="text-white/40 text-sm mb-3">Unable to fetch launches. Retrying...</p>
+                      <button
+                        onClick={() => fetchTokens()}
+                        className="text-xs text-[#7ba5ff] hover:text-white transition-colors font-mono border border-white/[0.1] px-3 py-1.5 rounded-lg"
+                      >
+                        Retry now
+                      </button>
+                    </div>
+                  )}
+
+                  {!loading && !error && displayedTokens.map(token => (
+                    <TokenCard key={token.id} token={token} />
+                  ))}
+
+                  {/* Load more / refresh */}
+                  {!loading && !error && displayedTokens.length > 0 && activeTab !== 'Trending' && (
+                    <div className="pt-6 text-center break-inside-avoid">
+                      {loadingMore ? (
+                        <span className="text-xs text-white/20 font-mono tracking-wide">Loading...</span>
+                      ) : (
+                        <button
+                          onClick={() => fetchTokens(true, cursor)}
+                          className="text-xs text-white/20 hover:text-white/50 transition-colors font-mono tracking-wide"
+                        >
+                          load more
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {!loading && !error && activeTab === 'Trending' && (
+                    <div className="pt-6 text-center break-inside-avoid">
+                      <button
+                        onClick={() => fetchTokens()}
+                        className="text-xs text-white/20 hover:text-white/50 transition-colors font-mono tracking-wide"
+                      >
+                        ↻ refresh
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
+            {/* Sidebar */}
             <aside className="space-y-5 hidden lg:block">
+
+              {/* Trending on Base */}
               <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-white font-semibold text-sm tracking-wide">Trending on Base</h3>
-                  {trendingTokens.length > 0 && (
+                  {sidebarTop5.length > 0 && (
                     <span className="text-[9px] font-mono text-green-400/60 flex items-center gap-1">
-                      <span className="w-1 h-1 rounded-full bg-green-400 animate-pulse" />live
+                      <span className="w-1 h-1 rounded-full bg-green-400 animate-pulse" />
+                      live
                     </span>
                   )}
                 </div>
                 <div className="space-y-3.5">
-                  {tokens.map((t, i) => (
-                    <div key={t.symbol} className="flex items-center gap-3">
-                      <span className="text-[10px] font-mono text-white/20 w-3 text-right">{i + 1}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-white/80 text-xs font-semibold">${t.symbol}</div>
-                        <div className="text-white/25 text-[10px] font-mono">{t.buys} buys 24h</div>
-                      </div>
-                      <div className="text-right">
-                        <div className={`text-xs font-mono ${t.change.startsWith('+') ? 'text-green-400' : 'text-red-400'}`}>{t.change}</div>
-                        <div className="text-white/25 text-[10px] font-mono">{t.vol}</div>
-                      </div>
-                    </div>
-                  ))}
+                  {loading && Array.from({ length: 5 }).map((_, i) => <SidebarSkeletonRow key={i} />)}
+                  {!loading && sidebarTop5.map((t, i) => {
+                    const mc = t.related?.market?.marketCap ?? 0
+                    return (
+                      <a
+                        key={t.id}
+                        href={`https://www.clanker.world/token/${t.contract_address}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+                      >
+                        <span className="text-[10px] font-mono text-white/20 w-3 text-right">{i + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-white/80 text-xs font-semibold truncate">${t.symbol}</div>
+                          <div className="text-white/25 text-[10px] font-mono truncate">{t.name}</div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-xs font-mono text-[#7ba5ff]">{mc > 0 ? fmtMarketCap(mc) : '—'}</div>
+                          <div className="text-white/25 text-[10px] font-mono">{timeAgo(t.created_at)}</div>
+                        </div>
+                      </a>
+                    )
+                  })}
                 </div>
-                <a href="https://www.geckoterminal.com/base/trending-pools" target="_blank" rel="noopener noreferrer"
-                  className="mt-4 inline-flex text-[10px] text-white/20 hover:text-white/50 transition-colors font-mono">
-                  via GeckoTerminal →
-                </a>
+                <p className="mt-4 text-[10px] text-white/20 font-mono">via Clanker API</p>
               </div>
 
+              {/* Launch CTA */}
               <div className="rounded-2xl border border-[#2151f5]/25 bg-[#2151f5]/5 p-5">
                 <h3 className="text-white font-semibold text-sm mb-1.5">Launch on Base</h3>
                 <p className="text-white/40 text-xs mb-4 leading-relaxed">Deploy with instant Uniswap v3 liquidity. Takes 60 seconds.</p>
-                <a href="https://clanker.world" target="_blank" rel="noopener noreferrer"
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#2151f5] text-white text-xs font-semibold rounded-lg hover:bg-[#1a41d4] transition-colors">
+                <a
+                  href="https://clanker.world"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#2151f5] text-white text-xs font-semibold rounded-lg hover:bg-[#1a41d4] transition-colors"
+                >
                   Launch on Clanker
                 </a>
               </div>
 
+              {/* Latest Editorials */}
               <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
                 <h3 className="text-white font-semibold text-sm mb-4 tracking-wide">Latest Editorials</h3>
                 <div className="space-y-4">
@@ -425,11 +487,16 @@ export default function Feed() {
                 </Link>
               </div>
 
+              {/* Follow Alcreon */}
               <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5">
                 <h3 className="text-white font-semibold text-sm mb-4 tracking-wide">Follow Alcreon</h3>
                 <div className="space-y-2">
-                  <a href="https://x.com/alcreonxyz" target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[0.04] transition-colors group">
+                  <a
+                    href="https://x.com/alcreonxyz"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[0.04] transition-colors group"
+                  >
                     <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04] group-hover:bg-white/[0.08] transition-colors text-white/50 group-hover:text-white">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.253 5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
@@ -440,8 +507,12 @@ export default function Feed() {
                       <div className="text-white/25 text-[10px]">X / Twitter</div>
                     </div>
                   </a>
-                  <a href="https://warpcast.com/alcreon" target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[0.04] transition-colors group">
+                  <a
+                    href="https://warpcast.com/alcreon"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[0.04] transition-colors group"
+                  >
                     <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04] group-hover:bg-white/[0.08] transition-colors text-white/50 group-hover:text-white">
                       <svg width="14" height="14" viewBox="0 0 1000 1000" fill="currentColor">
                         <path d="M257.778 155.556h484.444v688.889h-71.111v-244.445h-0.697c-7.056-85.189-78.308-151.111-165.414-151.111-87.107 0-158.359 65.922-165.414 151.111h-0.697v244.445h-81.111V155.556zM128.889 253.333l42.222 177.778h35.556V688.89h71.111V431.111h26.667V253.333H128.889zM771.111 253.333v177.778h26.667V688.89h71.111V431.111h35.556l42.222-177.778H771.111z" />
@@ -454,6 +525,7 @@ export default function Feed() {
                   </a>
                 </div>
               </div>
+
             </aside>
           </div>
         </section>
